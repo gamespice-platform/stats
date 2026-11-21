@@ -4,13 +4,13 @@ Without a store the tracker keeps a session and a delta and nothing else, and th
 
 ## Fed the same deltas at the same moment
 
-`DotStatsTracker.store` is an optional `DotStatsStore` (untyped, so a game can hand it anything with the same `merge`), fed **the same deltas at the same moment** the reporter is: at a checkpoint (a flush, a leave, shutdown). So a server with both keeps both, and the two cannot disagree about which readings they were told of. With only a store the flush timer still runs; assign it before `add_child`.
+`GSStatsTracker.store` is an optional `GSStatsStore` (untyped, so a game can hand it anything with the same `merge`), fed **the same deltas at the same moment** the reporter is: at a checkpoint (a flush, a leave, shutdown). So a server with both keeps both, and the two cannot disagree about which readings they were told of. With only a store the flush timer still runs; assign it before `add_child`.
 
 ## The rule stays in one place
 
-Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The obvious SQL store spells the rule in SQL (`amount + ?`, `GREATEST`, `LEAST`, which SQLite calls `max` and `min`), and that is a fifth copy of the rule in a fourth language, per dialect.
+Every store folds with `GSStatsValues.merge_from` / `GSStatsDef.merge`. The obvious SQL store spells the rule in SQL (`amount + ?`, `GREATEST`, `LEAST`, which SQLite calls `max` and `min`), and that is a fifth copy of the rule in a fourth language, per dialect.
 
-`DotStatsStoreSql` instead reads the player's rows, folds them with `DotStatsDef.merge`, and writes the result **guarded by a `revision` column**: an UPDATE names the revision it read, and one that finds no row lost a race with another server and re-reads, up to `max_attempts`. A first value is a plain INSERT, never an upsert, so a row another server made in between is a duplicate key and a re-read rather than an overwrite. The suite's `RacingDriver` fails both checks with the guard removed, and the live scene has two stores write one player at once against each database and requires exact totals.
+`GSStatsStoreSql` instead reads the player's rows, folds them with `GSStatsDef.merge`, and writes the result **guarded by a `revision` column**: an UPDATE names the revision it read, and one that finds no row lost a race with another server and re-reads, up to `max_attempts`. A first value is a plain INSERT, never an upsert, so a row another server made in between is a duplicate key and a re-read rather than an overwrite. The suite's `RacingDriver` fails both checks with the guard removed, and the live scene has two stores write one player at once against each database and requires exact totals.
 
 ## A partial failure names what did not land
 
@@ -22,8 +22,8 @@ Every store folds with `DotStatsValues.merge_from` / `DotStatsDef.merge`. The ob
 
 ## GameSpice SQL, duck-typed
 
-The store reaches GameSpice SQL **duck-typed**, so the addon names no GameSpice SQL class and parses without it; GameSpice SQL is linked into `addons/` (gitignored) only for the suites. The table is `DotStatsSqlSchema`'s spec (`SqlSchema`, because `DotStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.
+The store reaches GameSpice SQL **duck-typed**, so the addon names no GameSpice SQL class and parses without it; GameSpice SQL is linked into `addons/` (gitignored) only for the suites. The table is `GSStatsSqlSchema`'s spec (`SqlSchema`, because `GSStatsSchema` is already the set of definitions). A row is keyed (player, stat, dim): dim `""` is the total and `axis:value` a breakdown cell; migration step 2 rebuilds a v1 table with it.
 
 ## The file store writes once per flush
 
-`DotStatsStoreFile` marks itself dirty in a merge; the next frame takes one snapshot and a worker thread serialises and writes it (inline where `DotPlatform.has_threads()` is false). A tracker flush that merges 24 players is one write, not 24 in one frame (the 130 ms spike every 30 s in the owner's profile). The tracker calls `store.finish()` on exit; any other owner must too, since a RefCounted cannot flush itself while freed. `write_behind = false` restores write-through. `writes` counts completed writes.
+`GSStatsStoreFile` marks itself dirty in a merge; the next frame takes one snapshot and a worker thread serialises and writes it (inline where `GSPlatform.has_threads()` is false). A tracker flush that merges 24 players is one write, not 24 in one frame (the 130 ms spike every 30 s in the owner's profile). The tracker calls `store.finish()` on exit; any other owner must too, since a RefCounted cannot flush itself while freed. `write_behind = false` restores write-through. `writes` counts completed writes.

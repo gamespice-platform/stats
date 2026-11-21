@@ -1,5 +1,5 @@
 @tool
-class_name DotStatsSchema
+class_name GSStatsSchema
 extends Resource
 
 ## Every statistic a game keeps, declared once.
@@ -23,10 +23,10 @@ extends Resource
 ## look reasonable.
 const MAX_STATS := 200
 
-@export var stats: Array[DotStatsDef] = []
+@export var stats: Array[GSStatsDef] = []
 
-## Event rules for [method DotStatsTracker.event].
-@export var rules: Array[DotStatsRule] = []
+## Event rules for [method GSStatsTracker.event].
+@export var rules: Array[GSStatsRule] = []
 
 const VERSION := 2
 
@@ -37,16 +37,16 @@ var _indexed_count: int = -1
 ## Declares a stat and returns it, for building a schema in code.
 func define(
 	id: StringName,
-	kind: DotStatsDef.Kind = DotStatsDef.Kind.COUNTER,
+	kind: GSStatsDef.Kind = GSStatsDef.Kind.COUNTER,
 	name: String = ""
-) -> DotStatsDef:
-	var d := DotStatsDef.make(id, kind, name)
+) -> GSStatsDef:
+	var d := GSStatsDef.make(id, kind, name)
 	stats.append(d)
 	_indexed_count = -1
 	return d
 
 
-func find(id: StringName) -> DotStatsDef:
+func find(id: StringName) -> GSStatsDef:
 	_reindex()
 	return _by_id.get(id)
 
@@ -63,8 +63,8 @@ func ids() -> PackedStringArray:
 	return out
 
 
-func published() -> Array[DotStatsDef]:
-	var out: Array[DotStatsDef] = []
+func published() -> Array[GSStatsDef]:
+	var out: Array[GSStatsDef] = []
 	for d in stats:
 		if d.publish:
 			out.append(d)
@@ -77,10 +77,10 @@ func size() -> int:
 
 ## Refuses a duplicate id, a malformed one, and more stats than the backbone
 ## will accept.
-func validate() -> DotResult:
+func validate() -> GSResult:
 	if stats.size() > MAX_STATS:
-		return DotResult.fail(
-			DotError.CODE_QUOTA,
+		return GSResult.fail(
+			GSError.CODE_QUOTA,
 			"Too many stats declared.",
 			"%d, the most is %d" % [stats.size(), MAX_STATS]
 		)
@@ -88,13 +88,13 @@ func validate() -> DotResult:
 	var seen := {}
 	for d in stats:
 		if d == null:
-			return DotResult.fail(DotError.CODE_INVALID, "A null stat definition.")
+			return GSResult.fail(GSError.CODE_INVALID, "A null stat definition.")
 		var valid := d.validate()
 		if not valid.ok:
 			return valid
 		if seen.has(d.id):
-			return DotResult.fail(
-				DotError.CODE_INVALID,
+			return GSResult.fail(
+				GSError.CODE_INVALID,
 				"A stat id is declared twice.",
 				String(d.id)
 			)
@@ -107,17 +107,17 @@ func validate() -> DotResult:
 				return bad
 	for r in rules:
 		if r == null or not seen.has(r.stat):
-			return DotResult.fail(
-				DotError.CODE_INVALID, "A rule names a stat that is not declared.",
+			return GSResult.fail(
+				GSError.CODE_INVALID, "A rule names a stat that is not declared.",
 				String(r.stat) if r != null else ""
 			)
 		if _by_id_of(r.stat).derived != null:
-			return DotResult.fail(DotError.CODE_INVALID, "A rule cannot feed a derived stat.", String(r.stat))
+			return GSResult.fail(GSError.CODE_INVALID, "A rule cannot feed a derived stat.", String(r.stat))
 
-	return DotResult.success(self)
+	return GSResult.success(self)
 
 
-func _by_id_of(sid: StringName) -> DotStatsDef:
+func _by_id_of(sid: StringName) -> GSStatsDef:
 	for d in stats:
 		if d.id == sid:
 			return d
@@ -125,31 +125,31 @@ func _by_id_of(sid: StringName) -> DotStatsDef:
 
 
 ## A derived stat reads two declared, stored stats and breaks down by what both do.
-func _validate_derived(d: DotStatsDef, seen: Dictionary) -> DotResult:
+func _validate_derived(d: GSStatsDef, seen: Dictionary) -> GSResult:
 	for input in [d.derived.num, d.derived.den]:
 		if not seen.has(input):
-			return DotResult.fail(
-				DotError.CODE_INVALID, "A derived stat reads an undeclared stat.",
+			return GSResult.fail(
+				GSError.CODE_INVALID, "A derived stat reads an undeclared stat.",
 				"%s: %s" % [d.id, input]
 			)
 		if _by_id_of(input).derived != null:
-			return DotResult.fail(
-				DotError.CODE_INVALID, "A derived stat cannot read another derived stat.",
+			return GSResult.fail(
+				GSError.CODE_INVALID, "A derived stat cannot read another derived stat.",
 				"%s: %s" % [d.id, input]
 			)
 	var a := _by_id_of(d.derived.num)
 	var b := _by_id_of(d.derived.den)
 	for axis in d.breakdowns:
 		if not (axis in a.breakdowns) or not (axis in b.breakdowns):
-			return DotResult.fail(
-				DotError.CODE_INVALID, "A derived stat breaks down only by axes both inputs do.",
+			return GSResult.fail(
+				GSError.CODE_INVALID, "A derived stat breaks down only by axes both inputs do.",
 				"%s: %s" % [d.id, axis]
 			)
-	if d.derived.op == DotStatsDerived.Op.PER_MINUTE and b.value_type != DotStatsDef.ValueType.DURATION:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "per_minute divides by a DURATION stat.", "%s: %s" % [d.id, b.id]
+	if d.derived.op == GSStatsDerived.Op.PER_MINUTE and b.value_type != GSStatsDef.ValueType.DURATION:
+		return GSResult.fail(
+			GSError.CODE_INVALID, "per_minute divides by a DURATION stat.", "%s: %s" % [d.id, b.id]
 		)
-	return DotResult.success(self)
+	return GSResult.success(self)
 
 
 func to_dictionary() -> Dictionary:
@@ -164,8 +164,8 @@ func to_dictionary() -> Dictionary:
 
 ## True for a derived stat the site cannot compute: its diff ignores scale, so a scaled difference
 ## has no mapping. [method to_site_defs] leaves it out.
-func site_unsupported(d: DotStatsDef) -> bool:
-	return d.derived != null and d.derived.op == DotStatsDerived.Op.DIFFERENCE and d.derived.scale != 1.0
+func site_unsupported(d: GSStatsDef) -> bool:
+	return d.derived != null and d.derived.op == GSStatsDerived.Op.DIFFERENCE and d.derived.scale != 1.0
 
 
 ## The published stats as the site's stat-catalog document (`dot-stat-defs`, version 1), the file the
@@ -177,7 +177,7 @@ func to_site_defs(game: int = 0) -> Dictionary:
 	var pos := {}
 	for i in ordered.size():
 		pos[ordered[i]] = i
-	ordered.sort_custom(func(a: DotStatsDef, b: DotStatsDef) -> bool:
+	ordered.sort_custom(func(a: GSStatsDef, b: GSStatsDef) -> bool:
 		return a.order < b.order or (a.order == b.order and pos[a] < pos[b]))
 	for d in ordered:
 		if site_unsupported(d):
@@ -210,36 +210,36 @@ func to_site_defs(game: int = 0) -> Dictionary:
 	return doc
 
 
-static func from_dictionary(data: Dictionary) -> DotResult:
-	var schema := DotStatsSchema.new()
+static func from_dictionary(data: Dictionary) -> GSResult:
+	var schema := GSStatsSchema.new()
 	if int(data.get("version", 1)) > VERSION:
-		return DotResult.fail(
-			DotError.CODE_PARSE, "This schema is a newer version than dot-stats reads.",
+		return GSResult.fail(
+			GSError.CODE_PARSE, "This schema is a newer version than dot-stats reads.",
 			str(data.get("version"))
 		)
 	var list: Variant = data.get("stats", [])
 	if not (list is Array):
-		return DotResult.fail(
-			DotError.CODE_PARSE, "A schema is an object with a 'stats' list."
+		return GSResult.fail(
+			GSError.CODE_PARSE, "A schema is an object with a 'stats' list."
 		)
 
 	for entry in (list as Array):
 		if not (entry is Dictionary):
-			return DotResult.fail(
-				DotError.CODE_PARSE, "Each stat must be an object."
+			return GSResult.fail(
+				GSError.CODE_PARSE, "Each stat must be an object."
 			)
-		var parsed := DotStatsDef.from_dictionary(entry as Dictionary)
+		var parsed := GSStatsDef.from_dictionary(entry as Dictionary)
 		if not parsed.ok:
 			return parsed
 		schema.stats.append(parsed.value)
 
 	var rule_list: Variant = data.get("rules", [])
 	if not (rule_list is Array):
-		return DotResult.fail(DotError.CODE_PARSE, "A schema's 'rules' is a list.")
+		return GSResult.fail(GSError.CODE_PARSE, "A schema's 'rules' is a list.")
 	for entry in (rule_list as Array):
 		if not (entry is Dictionary):
-			return DotResult.fail(DotError.CODE_PARSE, "Each rule must be an object.")
-		var rule := DotStatsRule.from_dictionary(entry as Dictionary)
+			return GSResult.fail(GSError.CODE_PARSE, "Each rule must be an object.")
+		var rule := GSStatsRule.from_dictionary(entry as Dictionary)
 		if not rule.ok:
 			return rule
 		schema.rules.append(rule.value)
@@ -247,16 +247,16 @@ static func from_dictionary(data: Dictionary) -> DotResult:
 	var valid := schema.validate()
 	if not valid.ok:
 		return valid
-	return DotResult.success(schema)
+	return GSResult.success(schema)
 
 
-static func load_json(path: String) -> DotResult:
-	var read := DotPaths.read_json(path)
+static func load_json(path: String) -> GSResult:
+	var read := GSPaths.read_json(path)
 	if not read.ok:
 		return read.wrap("Could not read the stats schema.")
 	if not (read.value is Dictionary):
-		return DotResult.fail(
-			DotError.CODE_PARSE, "The stats schema must be a JSON object.", path
+		return GSResult.fail(
+			GSError.CODE_PARSE, "The stats schema must be a JSON object.", path
 		)
 	var parsed := from_dictionary(read.value as Dictionary)
 	if not parsed.ok:

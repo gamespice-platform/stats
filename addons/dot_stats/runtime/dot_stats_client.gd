@@ -1,10 +1,10 @@
 @tool
-class_name DotStatsClient
+class_name GSStatsClient
 extends Node
 
 ## A player's own statistics, reported by their own client with their own token.
 ##
-## The other surface. [DotStatsTracker] runs where an integration credential
+## The other surface. [GSStatsTracker] runs where an integration credential
 ## is — a server, the app's service — and files figures about every player it
 ## sees. This runs in the game the player is holding, and files figures about
 ## [b]one[/b] player, the one signed in, with the access token GameSpice Auth's
@@ -12,9 +12,9 @@ extends Node
 ## which is what makes it safe to ship in a client build.
 ##
 ## [codeblock]
-## var mine := DotStatsClient.new()
+## var mine := GSStatsClient.new()
 ## mine.schema = preload("res://stats.tres")
-## mine.client = auth_client              # GameSpice Auth's DotAuthClient, duck-typed
+## mine.client = auth_client              # GameSpice Auth's GSAuthClient, duck-typed
 ## add_child(mine)
 ##
 ## mine.record(&"launches")               # +1 on a counter
@@ -44,9 +44,9 @@ const MINE_PATH := "stats/me"
 const TOP_PATH := "stats/top"
 
 ## Emitted after each flush, successful or not.
-signal reported(result: DotResult)
+signal reported(result: GSResult)
 
-@export var schema: DotStatsSchema = null
+@export var schema: GSStatsSchema = null
 
 ## Read the schema from this JSON file when [member schema] is unset.
 @export_file("*.json") var schema_file: String = ""
@@ -59,12 +59,12 @@ signal reported(result: DotResult)
 @export_range(0.0, 600.0, 1.0, "or_greater") var report_interval: float = 30.0
 
 ## The player's client. Any object with `post_app(path, body)` and
-## `get_app(path, query)` — GameSpice Auth's [code]DotAuthClient[/code], which is
+## `get_app(path, query)` — GameSpice Auth's [code]GSAuthClient[/code], which is
 ## not named here for the family's reason.
 var client: Object = null
 
-var _session := DotStatsValues.new()
-var _delta := DotStatsValues.new()
+var _session := GSStatsValues.new()
+var _delta := GSStatsValues.new()
 var _timer: Timer = null
 var _started: bool = false
 var sent: int = 0
@@ -77,22 +77,22 @@ func _ready() -> void:
 		return
 	var res := start()
 	if not res.ok:
-		DotLog.result(CHANNEL, "stats client", res)
+		GSLog.result(CHANNEL, "stats client", res)
 
 
-func start() -> DotResult:
+func start() -> GSResult:
 	if _started:
-		return DotResult.success(self)
+		return GSResult.success(self)
 
 	if schema == null and schema_file != "":
-		var loaded := DotStatsSchema.load_json(schema_file)
+		var loaded := GSStatsSchema.load_json(schema_file)
 		if not loaded.ok:
 			return loaded
 		schema = loaded.value
 
 	if schema == null:
-		return DotResult.fail(
-			DotError.CODE_STATE, "The stats client has no schema.", "assign schema or schema_file"
+		return GSResult.fail(
+			GSError.CODE_STATE, "The stats client has no schema.", "assign schema or schema_file"
 		)
 
 	var valid := schema.validate()
@@ -108,7 +108,7 @@ func start() -> DotResult:
 		add_child(_timer)
 
 	_started = true
-	return DotResult.success(self)
+	return GSResult.success(self)
 
 
 func _exit_tree() -> void:
@@ -121,7 +121,7 @@ func is_available() -> bool:
 
 
 ## Applies a reading to the session and the delta, by the stat's kind.
-func record(stat_id: StringName, value: float = 1.0) -> DotResult:
+func record(stat_id: StringName, value: float = 1.0) -> GSResult:
 	if not _started:
 		var s := start()
 		if not s.ok:
@@ -129,13 +129,13 @@ func record(stat_id: StringName, value: float = 1.0) -> DotResult:
 
 	var def := schema.find(stat_id)
 	if def == null:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "No such stat is declared.", String(stat_id)
+		return GSResult.fail(
+			GSError.CODE_INVALID, "No such stat is declared.", String(stat_id)
 		)
 
 	if def.source != "client":
-		return DotResult.fail(
-			DotError.CODE_FORBIDDEN, "Only a client-source stat can be reported by a player.", String(stat_id)
+		return GSResult.fail(
+			GSError.CODE_FORBIDDEN, "Only a client-source stat can be reported by a player.", String(stat_id)
 		)
 
 	var applied := _session.record(def, value)
@@ -147,7 +147,7 @@ func record(stat_id: StringName, value: float = 1.0) -> DotResult:
 
 
 ## This session's values so far. Never sent; for the game's own screen.
-func session_values() -> DotStatsValues:
+func session_values() -> GSStatsValues:
 	return _session
 
 
@@ -156,15 +156,15 @@ func pending() -> int:
 
 
 ## Sends the delta. Kept on failure, cleared on success.
-func flush() -> DotResult:
+func flush() -> GSResult:
 	if _delta.is_empty():
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	if not is_available():
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"No client to report through.",
-			"assign DotStatsClient.client from dot-auth's DotAuthClient"
+			"assign GSStatsClient.client from dot-auth's GSAuthClient"
 		)
 
 	var body := {"stats": _delta.to_dictionary()}
@@ -172,16 +172,16 @@ func flush() -> DotResult:
 		body["app"] = app_id
 
 	var result: Variant = await client.call("post_app", SUBMIT_PATH, body)
-	if not (result is DotResult):
+	if not (result is GSResult):
 		failures += 1
-		last_error = "the client returned something that is not a DotResult"
-		return DotResult.fail(DotError.CODE_INTERNAL, last_error)
+		last_error = "the client returned something that is not a GSResult"
+		return GSResult.fail(GSError.CODE_INTERNAL, last_error)
 
-	var typed := result as DotResult
+	var typed := result as GSResult
 	if not typed.ok:
 		failures += 1
 		last_error = typed.error.message
-		DotLog.warn(CHANNEL, "could not report my stats; keeping them", {"why": last_error})
+		GSLog.warn(CHANNEL, "could not report my stats; keeping them", {"why": last_error})
 		reported.emit(typed)
 		return typed
 
@@ -190,33 +190,33 @@ func flush() -> DotResult:
 	sent += count
 	last_error = ""
 	reported.emit(typed)
-	return DotResult.success(count)
+	return GSResult.success(count)
 
 
 ## What the site holds for this player under the app.
-func fetch_mine() -> DotResult:
+func fetch_mine() -> GSResult:
 	if not is_available():
-		return DotResult.fail(DotError.CODE_STATE, "No client to read through.")
+		return GSResult.fail(GSError.CODE_STATE, "No client to read through.")
 	var query := {}
 	if app_id > 0:
 		query["app"] = app_id
 	var result: Variant = await client.call("get_app", MINE_PATH, query)
-	if not (result is DotResult):
-		return DotResult.fail(DotError.CODE_INTERNAL, "the client returned something that is not a DotResult")
-	return result as DotResult
+	if not (result is GSResult):
+		return GSResult.fail(GSError.CODE_INTERNAL, "the client returned something that is not a GSResult")
+	return result as GSResult
 
 
 ## One stat as a ranking, with this player's own rank beside it.
-func fetch_top(stat_id: StringName, limit: int = 25, offset: int = 0) -> DotResult:
+func fetch_top(stat_id: StringName, limit: int = 25, offset: int = 0) -> GSResult:
 	if not is_available():
-		return DotResult.fail(DotError.CODE_STATE, "No client to read through.")
+		return GSResult.fail(GSError.CODE_STATE, "No client to read through.")
 	var query := {"stat": String(stat_id), "limit": limit, "offset": offset}
 	if app_id > 0:
 		query["app"] = app_id
 	var result: Variant = await client.call("get_app", TOP_PATH, query)
-	if not (result is DotResult):
-		return DotResult.fail(DotError.CODE_INTERNAL, "the client returned something that is not a DotResult")
-	return result as DotResult
+	if not (result is GSResult):
+		return GSResult.fail(GSError.CODE_INTERNAL, "the client returned something that is not a GSResult")
+	return result as GSResult
 
 
 func _on_report_due() -> void:

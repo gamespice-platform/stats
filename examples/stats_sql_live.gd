@@ -15,7 +15,7 @@ const CHECKS := 13
 
 const TABLE := "dot_stats_live_values"
 
-## Merges fired at one player at once, one kill each, under DotHttp's pool of 16.
+## Merges fired at one player at once, one kill each, under GSHttp's pool of 16.
 const PILE := 12
 
 ## Merges each of two "servers" makes one after another, while the other does the same.
@@ -28,13 +28,13 @@ var _landed := 0
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.ERROR)
+	GSLog.set_level(GSLog.Level.ERROR)
 
-	var dialect := DotSqlDialect.from_name((OS.get_environment("GS_SQL_DIALECT") if OS.has_environment("GS_SQL_DIALECT") else OS.get_environment("DOT_SQL_DIALECT")))
-	var made := DotSql.from_config({
+	var dialect := GSSqlDialect.from_name((OS.get_environment("GS_SQL_DIALECT") if OS.has_environment("GS_SQL_DIALECT") else OS.get_environment("DOT_SQL_DIALECT")))
+	var made := GSSql.from_config({
 		"driver": "gateway",
 		"url": (OS.get_environment("GS_SQL_URL") if OS.has_environment("GS_SQL_URL") else OS.get_environment("DOT_SQL_URL")),
-		"dialect": DotSqlDialect.name_of(dialect),
+		"dialect": GSSqlDialect.name_of(dialect),
 		"token": FileAccess.get_file_as_string((OS.get_environment("GS_SQL_TOKEN_FILE") if OS.has_environment("GS_SQL_TOKEN_FILE") else OS.get_environment("DOT_SQL_TOKEN_FILE"))).strip_edges(),
 	}, self)
 	if not made.ok or made.value == null:
@@ -42,32 +42,32 @@ func _ready() -> void:
 		get_tree().quit(2)
 		return
 
-	var driver: DotSqlDriverGateway = made.value
-	print("dot-stats live: %s" % DotSqlDialect.name_of(dialect))
+	var driver: GSSqlDriverGateway = made.value
+	print("dot-stats live: %s" % GSSqlDialect.name_of(dialect))
 
 	# A clean table every run.
 	await driver.open()
 	await _drop(driver)
 
-	var schema := DotStatsSchema.new()
+	var schema := GSStatsSchema.new()
 	schema.define(&"kills")
-	schema.define(&"level", DotStatsDef.Kind.GAUGE)
-	schema.define(&"top_speed", DotStatsDef.Kind.BEST)
-	schema.define(&"best_lap", DotStatsDef.Kind.LOWEST)
+	schema.define(&"level", GSStatsDef.Kind.GAUGE)
+	schema.define(&"top_speed", GSStatsDef.Kind.BEST)
+	schema.define(&"best_lap", GSStatsDef.Kind.LOWEST)
 
 	var store := _store(driver, schema)
-	var opened: DotResult = await store.open()
+	var opened: GSResult = await store.open()
 	_check("the store creates its table", opened.ok, opened)
 
 	var who := &"p'1"
-	var first: DotResult = await store.merge(who, {"kills": 3, "level": 2, "top_speed": 30.25, "best_lap": 61.123}, schema, "O'Brien 🙃")
+	var first: GSResult = await store.merge(who, {"kills": 3, "level": 2, "top_speed": 30.25, "best_lap": 61.123}, schema, "O'Brien 🙃")
 	_check(
 		"first readings stand as they are, a LOWEST included",
 		first.ok and _v(first).get_value(&"kills") == 3.0 and _v(first).get_value(&"best_lap") == 61.123,
 		first
 	)
 
-	var second: DotResult = await store.merge(who, {"kills": 4, "level": 1, "top_speed": 20.0, "best_lap": 70.0}, schema)
+	var second: GSResult = await store.merge(who, {"kills": 4, "level": 1, "top_speed": 20.0, "best_lap": 70.0}, schema)
 	_check(
 		"each kind folds by its rule: 3+4 kills, the level replaced, the best and the lowest kept",
 		second.ok and _v(second).get_value(&"kills") == 7.0 and _v(second).get_value(&"level") == 1.0
@@ -78,7 +78,7 @@ func _ready() -> void:
 	await store.merge(&"p2", {"kills": 7, "best_lap": 59.5}, schema, "Bo")
 	await store.merge(&"p3", {"kills": 1, "best_lap": 61.123}, schema, "Cy")
 
-	var kills: DotResult = await store.top(&"kills")
+	var kills: GSResult = await store.top(&"kills")
 	_check(
 		"a counter ranks highest first, a tie sharing its rank (1, 1, 3)",
 		_shape(kills) == "p'1=1 p2=1 p3=3", kills, _shape(kills)
@@ -88,14 +88,14 @@ func _ready() -> void:
 		kills.ok and (kills.value as Array)[0]["name"] == "O'Brien 🙃"
 	)
 
-	var laps: DotResult = await store.top(&"best_lap")
+	var laps: GSResult = await store.top(&"best_lap")
 	_check("a LOWEST ranks lowest first (1, 2, 2)", _shape(laps) == "p2=1 p'1=2 p3=2", laps, _shape(laps))
 
-	var page: DotResult = await store.top(&"best_lap", 1, 1)
+	var page: GSResult = await store.top(&"best_lap", 1, 1)
 	_check("a limit and an offset page through it", _shape(page) == "p'1=2", page, _shape(page))
 
-	var rank: DotResult = await store.rank_of(&"best_lap", &"p3")
-	var none: DotResult = await store.rank_of(&"best_lap", &"nobody")
+	var rank: GSResult = await store.rank_of(&"best_lap", &"p3")
+	var none: GSResult = await store.rank_of(&"best_lap", &"nobody")
 	_check("a rank, and 0 for a player who holds none", rank.ok and rank.value == 2 and none.ok and none.value == 0, rank)
 
 	# Two servers folding into one row at once. Without the revision guard the read-fold-write
@@ -110,7 +110,7 @@ func _ready() -> void:
 		_race(server_a, schema, &"pile")
 		_race(server_b, schema, &"pile")
 	await _wait_for(PILE)
-	var piled: DotResult = await store.values_for(&"pile")
+	var piled: GSResult = await store.values_for(&"pile")
 	_check(
 		"a pile-up of %d merges: the total is exactly the %d that reported landing" % [PILE, _landed],
 		_finished == PILE and piled.ok and _v(piled).get_value(&"kills") == float(_landed),
@@ -125,7 +125,7 @@ func _ready() -> void:
 	_server(server_a, schema)
 	_server(server_b, schema)
 	await _wait_for(PER_SERVER * 2)
-	var raced: DotResult = await store.values_for(&"racer")
+	var raced: GSResult = await store.values_for(&"racer")
 	_check(
 		"two servers writing one player at once add up: %d (%d lost races, re-read and retried)" % [
 			PER_SERVER * 2, server_a.conflicts + server_b.conflicts - lost_before
@@ -134,8 +134,8 @@ func _ready() -> void:
 		raced, "%d landed, total %s" % [_landed, str(_v(raced).get_value(&"kills")) if raced.ok else "?"]
 	)
 
-	var removed: DotResult = await store.remove_player(&"p3")
-	var gone: DotResult = await store.values_for(&"p3")
+	var removed: GSResult = await store.remove_player(&"p3")
+	var gone: GSResult = await store.values_for(&"p3")
 	_check("a player can be forgotten", removed.ok and removed.value == true and gone.ok and _v(gone).is_empty(), removed)
 
 	# A tracker with no backbone keeps lifetime totals across two sessions.
@@ -147,11 +147,11 @@ func _ready() -> void:
 	tracker.begin(&"p9", "Nine")
 	tracker.record(&"p9", &"kills", 5.0)
 	await tracker.flush()
-	var lifetime: DotResult = await store.values_for(&"p9")
+	var lifetime: GSResult = await store.values_for(&"p9")
 	_check("a tracker with no backbone keeps a lifetime total across sessions: 2 + 5", lifetime.ok and _v(lifetime).get_value(&"kills") == 7.0, lifetime)
 	tracker.queue_free()
 
-	var reopen: DotResult = await _store(driver, schema).open()
+	var reopen: GSResult = await _store(driver, schema).open()
 	_check("opening an existing table again is harmless", reopen.ok, reopen)
 
 	print("%d passed, %d failed" % [_passed, _failed])
@@ -159,14 +159,14 @@ func _ready() -> void:
 	get_tree().quit(1 if _failed > 0 or _passed + _failed != CHECKS else 0)
 
 
-func _race(store: DotStatsStoreSql, schema: DotStatsSchema, player: StringName) -> void:
-	var res: DotResult = await store.merge(player, {"kills": 1}, schema, "Racer")
+func _race(store: GSStatsStoreSql, schema: GSStatsSchema, player: StringName) -> void:
+	var res: GSResult = await store.merge(player, {"kills": 1}, schema, "Racer")
 	if res.ok:
 		_landed += 1
 	_finished += 1
 
 
-func _server(store: DotStatsStoreSql, schema: DotStatsSchema) -> void:
+func _server(store: GSStatsStoreSql, schema: GSStatsSchema) -> void:
 	for i in PER_SERVER:
 		await _race(store, schema, &"racer")
 
@@ -177,15 +177,15 @@ func _wait_for(count: int) -> void:
 		await get_tree().process_frame
 
 
-func _store(driver, schema: DotStatsSchema) -> DotStatsStoreSql:
-	var store := DotStatsStoreSql.new(driver)
+func _store(driver, schema: GSStatsSchema) -> GSStatsStoreSql:
+	var store := GSStatsStoreSql.new(driver)
 	store.table = TABLE
 	store.schema = schema
 	return store
 
 
-func _tracker(store: DotStatsStore, schema: DotStatsSchema) -> DotStatsTracker:
-	var tracker := DotStatsTracker.new()
+func _tracker(store: GSStatsStore, schema: GSStatsSchema) -> GSStatsTracker:
+	var tracker := GSStatsTracker.new()
 	tracker.schema = schema
 	tracker.report_to_backbone = false
 	tracker.report_interval = 0.0
@@ -194,11 +194,11 @@ func _tracker(store: DotStatsStore, schema: DotStatsSchema) -> DotStatsTracker:
 	return tracker
 
 
-func _v(res: DotResult) -> DotStatsValues:
-	return res.value if res.ok and res.value is DotStatsValues else DotStatsValues.new()
+func _v(res: GSResult) -> GSStatsValues:
+	return res.value if res.ok and res.value is GSStatsValues else GSStatsValues.new()
 
 
-func _shape(res: DotResult) -> String:
+func _shape(res: GSResult) -> String:
 	if not res.ok:
 		return "?"
 	var parts := PackedStringArray()
@@ -212,7 +212,7 @@ func _drop(driver) -> void:
 	await driver.execute("DELETE FROM dot_sql_migrations WHERE component = ?", ["dot_stats:%s" % TABLE])
 
 
-func _check(what: String, passed: bool, res: DotResult = null, detail: String = "") -> void:
+func _check(what: String, passed: bool, res: GSResult = null, detail: String = "") -> void:
 	if passed:
 		_passed += 1
 		print("  %-60s ok" % what)

@@ -1,5 +1,5 @@
 extends Node
-## Offline suite for DotStatsPoints. godot --headless --path . res://examples/points_selftest.tscn
+## Offline suite for GSStatsPoints. godot --headless --path . res://examples/points_selftest.tscn
 
 var _passed := 0
 var _failed := 0
@@ -8,7 +8,7 @@ var _seen: Array = []
 
 
 func _ready() -> void:
-	var pts := DotStatsPoints.new()
+	var pts := GSStatsPoints.new()
 	pts.record_fn = func(_p: Variant, _s: StringName, v: float) -> void: _filed += v
 	pts.awarded.connect(func(p: Variant, s: StringName, a: int, t: int) -> void: _seen.append([p, s, a, t]))
 
@@ -34,11 +34,11 @@ func _ready() -> void:
 	_check(pts.survive(5, 25.0) == 8 and pts.survive(5, 5.0) == 4, "survival pays per interval and carries the remainder")
 	pts.mirror(7, &"kill", 10, 40)
 	_check(int(pts.totals[7]) == 40 and _seen.back()[3] == 40, "a client mirror sets the total")
-	var copy := DotStatsPoints.new()
+	var copy := GSStatsPoints.new()
 	copy.configure(JSON.parse_string(JSON.stringify(pts.to_dictionary())))
 	_check(copy.sources[&"kill"] == 10 and copy.streak_cap == 3, "config round-trips through JSON")
-	var schema := DotStatsSchema.new()
-	var def := DotStatsPoints.declare(schema)
+	var schema := GSStatsSchema.new()
+	var def := GSStatsPoints.declare(schema)
 	_check(schema.find(&"points") == def and def.publish, "declare adds a published stat")
 	pts.forget(2)
 	_check(not pts.totals.has(2), "forget drops a player")

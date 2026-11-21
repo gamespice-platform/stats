@@ -1,5 +1,5 @@
-class_name DotStatsStoreFile
-extends DotStatsStoreMemory
+class_name GSStatsStoreFile
+extends GSStatsStoreMemory
 
 ## Lifetime values kept in one JSON file, for a server or an offline game with no database.
 ##
@@ -17,7 +17,7 @@ var write_behind: bool = true
 var writes: int = 0
 
 var _loaded: bool = false
-var _files: DotSaveStoreFile
+var _files: GSSaveStoreFile
 var _dirty: bool = false
 var _ticking: bool = false
 var _task: int = -1
@@ -29,9 +29,9 @@ func _init(p_path: String = "user://dot_stats.json") -> void:
 
 
 ## The file store the file is written through: the folder of [member path], the file's own name as the key and no ending added, so the path stays exactly what the caller gave. It follows [member path] as it changes.
-func files() -> DotSaveStoreFile:
+func files() -> GSSaveStoreFile:
 	if _files == null:
-		_files = DotSaveStoreFile.new()
+		_files = GSSaveStoreFile.new()
 		_files.suffix = ""
 		_files.key_check = func(key: String) -> bool: return not key.is_empty()
 	_files.directory = path.get_base_dir()
@@ -39,48 +39,48 @@ func files() -> DotSaveStoreFile:
 
 
 func _merge(
-	player_id: StringName, incoming: DotStatsValues, p_schema: DotStatsSchema, player_name: String
-) -> DotResult:
+	player_id: StringName, incoming: GSStatsValues, p_schema: GSStatsSchema, player_name: String
+) -> GSResult:
 	var read := _load()
 	if not read.ok:
 		return read
-	var res: DotResult = await super._merge(player_id, incoming, p_schema, player_name)
+	var res: GSResult = await super._merge(player_id, incoming, p_schema, player_name)
 	if res.ok:
 		_save()
 	return res
 
 
-func values_for(player_id: StringName) -> DotResult:
+func values_for(player_id: StringName) -> GSResult:
 	var read := _load()
 	if not read.ok:
 		return read
 	return await super.values_for(player_id)
 
 
-func remove_player(player_id: StringName) -> DotResult:
+func remove_player(player_id: StringName) -> GSResult:
 	var read := _load()
 	if not read.ok:
 		return read
-	var res: DotResult = await super.remove_player(player_id)
+	var res: GSResult = await super.remove_player(player_id)
 	_save()
 	return res
 
 
-func _load() -> DotResult:
+func _load() -> GSResult:
 	if _loaded:
-		return DotResult.success(true)
+		return GSResult.success(true)
 	if FileAccess.file_exists(path):
-		var read := DotPaths.read_json(path)
+		var read := GSPaths.read_json(path)
 		# A file that exists and cannot be read is a failure, not an empty store: the next write would replace a player's career with nothing.
 		if not read.ok:
 			return read.wrap("Could not read the stats file.")
 		if not (read.value is Dictionary):
-			return DotResult.fail(DotError.CODE_PARSE, "The stats file is an object.", path)
+			return GSResult.fail(GSError.CODE_PARSE, "The stats file is an object.", path)
 		for id in (read.value as Dictionary):
 			var row: Variant = read.value[id]
 			if not (row is Dictionary):
 				continue
-			var values := DotStatsValues.from_dictionary((row as Dictionary).get("values", {}))
+			var values := GSStatsValues.from_dictionary((row as Dictionary).get("values", {}))
 			var cells: Variant = (row as Dictionary).get("cells", {})
 			if cells is Dictionary:
 				for key in cells:
@@ -88,7 +88,7 @@ func _load() -> DotResult:
 						values.cells[str(key)] = float(cells[key])
 			_rows[StringName(str(id))] = {"name": str((row as Dictionary).get("name", "")), "values": values}
 	_loaded = true
-	return DotResult.success(true)
+	return GSResult.success(true)
 
 
 func _save() -> void:
@@ -124,7 +124,7 @@ func _tick() -> void:
 		return
 	_dirty = false
 	var rows := _snapshot()
-	if DotPlatform.has_threads():
+	if GSPlatform.has_threads():
 		_task = WorkerThreadPool.add_task(_write.bind(rows, files(), path.get_file(), _written), false, "stats file")
 	else:
 		_write(rows, files(), path.get_file(), _written)
@@ -145,7 +145,7 @@ func _snapshot() -> Dictionary:
 	var out := {}
 	for id in _rows:
 		var row: Dictionary = _rows[id]
-		var values: DotStatsValues = row["values"]
+		var values: GSStatsValues = row["values"]
 		out[String(id)] = {"name": row["name"], "values": values.to_dictionary(), "cells": values.cells.duplicate()}
 	return out
 
@@ -159,17 +159,17 @@ func _collect(wait: bool) -> bool:
 		_task = -1
 	if _written.is_empty():
 		return true
-	var written: DotResult = _written.pop_back()
+	var written: GSResult = _written.pop_back()
 	_written.clear()
 	writes += 1
 	if not written.ok:
 		# The figures stay in memory and the next merge retries; failing the merge would make the tracker re-queue a delta already folded in.
 		_dirty = true
-		DotLog.warn(CHANNEL, "could not write the stats file", {"path": path, "why": written.error.message})
+		GSLog.warn(CHANNEL, "could not write the stats file", {"path": path, "why": written.error.message})
 		return true
-	DotWeb.sync_filesystem()
+	GSWeb.sync_filesystem()
 	return true
 
 
-static func _write(rows: Dictionary, store: DotSaveStoreFile, key: String, result: Array) -> void:
+static func _write(rows: Dictionary, store: GSSaveStoreFile, key: String, result: Array) -> void:
 	result.append(store.write(key, JSON.stringify(rows, "\t")))

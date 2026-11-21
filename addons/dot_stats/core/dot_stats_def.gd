@@ -1,5 +1,5 @@
 @tool
-class_name DotStatsDef
+class_name GSStatsDef
 extends Resource
 
 ## One statistic a game keeps per player: what it is called, and how two
@@ -110,15 +110,15 @@ const MAX_BREAKDOWNS := 4
 @export var source: String = "server"
 
 ## Non-null for a computed stat: never stored, so kind and bounds do not apply.
-@export var derived: DotStatsDerived = null
+@export var derived: GSStatsDerived = null
 
 
 static func make(
 	p_id: StringName,
 	p_kind: Kind = Kind.COUNTER,
 	p_name: String = ""
-) -> DotStatsDef:
-	var d := DotStatsDef.new()
+) -> GSStatsDef:
+	var d := GSStatsDef.new()
 	d.id = p_id
 	d.kind = p_kind
 	d.display_name = p_name if p_name != "" else String(p_id).capitalize()
@@ -176,44 +176,44 @@ static func is_valid_id(candidate: String) -> bool:
 	return true
 
 
-func validate() -> DotResult:
+func validate() -> GSResult:
 	if not is_valid_id(String(id)):
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"A stat id is letters, digits, '_', '.' or '-', up to 64 characters.",
 			String(id)
 		)
 	if display_name.length() > 80:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "A stat name is at most 80 characters.", String(id)
+		return GSResult.fail(
+			GSError.CODE_INVALID, "A stat name is at most 80 characters.", String(id)
 		)
 	if unit.length() > 16:
-		return DotResult.fail(
-			DotError.CODE_INVALID, "A unit is at most 16 characters.", String(id)
+		return GSResult.fail(
+			GSError.CODE_INVALID, "A unit is at most 16 characters.", String(id)
 		)
 	return _validate_v2()
 
 
-func _validate_v2() -> DotResult:
+func _validate_v2() -> GSResult:
 	var sid := String(id)
 	if not (format in FORMATS) or not (column in COLUMNS) or not (source in SOURCES) or not (better in BETTER):
-		return DotResult.fail(DotError.CODE_INVALID, "A format, column, source or better is not one of the allowed names.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "A format, column, source or better is not one of the allowed names.", sid)
 	if breakdowns.size() > MAX_BREAKDOWNS:
-		return DotResult.fail(DotError.CODE_INVALID, "A stat has at most %d breakdowns." % MAX_BREAKDOWNS, sid)
+		return GSResult.fail(GSError.CODE_INVALID, "A stat has at most %d breakdowns." % MAX_BREAKDOWNS, sid)
 	for i in range(breakdowns.size()):
 		if not is_valid_id(breakdowns[i]) or breakdowns.find(breakdowns[i]) != i:
-			return DotResult.fail(DotError.CODE_INVALID, "A breakdown is an axis name, once.", sid)
+			return GSResult.fail(GSError.CODE_INVALID, "A breakdown is an axis name, once.", sid)
 	if has_min and has_max and min_value > max_value:
-		return DotResult.fail(DotError.CODE_INVALID, "A stat's minimum is above its maximum.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "A stat's minimum is above its maximum.", sid)
 	if max_rate < 0.0 or not is_finite(max_rate):
-		return DotResult.fail(DotError.CODE_INVALID, "max_rate is zero or a positive number.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "max_rate is zero or a positive number.", sid)
 	if max_rate > 0.0 and kind != Kind.COUNTER and derived == null:
-		return DotResult.fail(DotError.CODE_INVALID, "max_rate applies to counters only.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "max_rate applies to counters only.", sid)
 	if value_type == ValueType.BOOL and kind == Kind.COUNTER and derived == null:
-		return DotResult.fail(DotError.CODE_INVALID, "A yes/no stat cannot be a counter.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "A yes/no stat cannot be a counter.", sid)
 	if derived != null and (has_min or has_max or max_rate > 0.0):
-		return DotResult.fail(DotError.CODE_INVALID, "A derived stat has no bounds or rate; it is never stored.", sid)
-	return DotResult.success(self)
+		return GSResult.fail(GSError.CODE_INVALID, "A derived stat has no bounds or rate; it is never stored.", sid)
+	return GSResult.success(self)
 
 
 func value_type_name() -> String:
@@ -286,8 +286,8 @@ func to_wire() -> Dictionary:
 	return out
 
 
-static func from_dictionary(data: Dictionary) -> DotResult:
-	var d := DotStatsDef.new()
+static func from_dictionary(data: Dictionary) -> GSResult:
+	var d := GSStatsDef.new()
 	d.id = StringName(str(data.get("id", "")))
 	d.display_name = str(data.get("name", ""))
 	d.description = str(data.get("description", ""))
@@ -302,8 +302,8 @@ static func from_dictionary(data: Dictionary) -> DotResult:
 
 	var k := kind_from_name(str(data.get("kind", "COUNTER")))
 	if k < 0:
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"Unknown stat kind.",
 			"%s: '%s'" % [String(d.id), str(data.get("kind"))]
 		)
@@ -315,20 +315,20 @@ static func from_dictionary(data: Dictionary) -> DotResult:
 	var valid := d.validate()
 	if not valid.ok:
 		return valid
-	return DotResult.success(d)
+	return GSResult.success(d)
 
 
-func _read_v2(data: Dictionary) -> DotResult:
+func _read_v2(data: Dictionary) -> GSResult:
 	var sid := str(data.get("id", ""))
 	var t := ValueType.keys().find(str(data.get("type", "NUMBER")).to_upper())
 	if t < 0:
-		return DotResult.fail(DotError.CODE_INVALID, "Unknown stat type.", "%s: '%s'" % [sid, str(data.get("type"))])
+		return GSResult.fail(GSError.CODE_INVALID, "Unknown stat type.", "%s: '%s'" % [sid, str(data.get("type"))])
 	value_type = t as ValueType
 	for key in ["min", "max", "max_rate"]:
 		if data.has(key) and not (data[key] is float or data[key] is int):
-			return DotResult.fail(DotError.CODE_INVALID, "'%s' must be a number." % key, sid)
+			return GSResult.fail(GSError.CODE_INVALID, "'%s' must be a number." % key, sid)
 		if data.has(key) and not is_finite(float(data[key])):
-			return DotResult.fail(DotError.CODE_INVALID, "'%s' must be finite." % key, sid)
+			return GSResult.fail(GSError.CODE_INVALID, "'%s' must be finite." % key, sid)
 	has_min = data.has("min")
 	min_value = float(data.get("min", 0.0))
 	has_max = data.has("max")
@@ -336,7 +336,7 @@ func _read_v2(data: Dictionary) -> DotResult:
 	max_rate = float(data.get("max_rate", 0.0))
 	var axes: Variant = data.get("breakdowns", [])
 	if not (axes is Array):
-		return DotResult.fail(DotError.CODE_INVALID, "'breakdowns' is a list of axis names.", sid)
+		return GSResult.fail(GSError.CODE_INVALID, "'breakdowns' is a list of axis names.", sid)
 	for a in (axes as Array):
 		breakdowns.append(str(a))
 	format = str(data.get("format", ""))
@@ -347,14 +347,14 @@ func _read_v2(data: Dictionary) -> DotResult:
 	source = str(data.get("source", "server"))
 	if data.has("derived"):
 		if data.has("kind"):
-			return DotResult.fail(DotError.CODE_INVALID, "A derived stat has no kind.", sid)
+			return GSResult.fail(GSError.CODE_INVALID, "A derived stat has no kind.", sid)
 		if not (data["derived"] is Dictionary):
-			return DotResult.fail(DotError.CODE_INVALID, "'derived' is an object.", sid)
-		var dr := DotStatsDerived.from_dictionary(data["derived"] as Dictionary)
+			return GSResult.fail(GSError.CODE_INVALID, "'derived' is an object.", sid)
+		var dr := GSStatsDerived.from_dictionary(data["derived"] as Dictionary)
 		if not dr.ok:
 			return dr.wrap(sid)
 		derived = dr.value
-	return DotResult.success(self)
+	return GSResult.success(self)
 
 
 func describe() -> Dictionary:
@@ -371,4 +371,4 @@ func describe() -> Dictionary:
 
 
 func _to_string() -> String:
-	return "DotStatsDef(%s, %s)" % [String(id), kind_name()]
+	return "GSStatsDef(%s, %s)" % [String(id), kind_name()]

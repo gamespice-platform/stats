@@ -8,71 +8,71 @@ var _entered := 0
 var _completed := 0
 
 
-## A stand-in for GameSpice Auth's DotBackboneClient, which this addon never names.
+## A stand-in for GameSpice Auth's GSBackboneClient, which this addon never names.
 class FakeBackbone extends RefCounted:
 	var calls: Array[Dictionary] = []
 	var fail: bool = false
 	var status: int = 500
 
-	func post_integration(path: String, body: Dictionary) -> DotResult:
+	func post_integration(path: String, body: Dictionary) -> GSResult:
 		calls.append({"path": path, "body": body.duplicate(true)})
 		if fail:
-			var error := DotError.make(DotError.CODE_HTTP, "backbone is down")
+			var error := GSError.make(GSError.CODE_HTTP, "backbone is down")
 			error.http_status = status
-			return DotResult.failure(error)
-		return DotResult.success({"ok": true})
+			return GSResult.failure(error)
+		return GSResult.success({"ok": true})
 
-	func get_integration(path: String, query: Dictionary) -> DotResult:
+	func get_integration(path: String, query: Dictionary) -> GSResult:
 		calls.append({"path": path, "query": query.duplicate(true)})
 		if fail:
-			var error := DotError.make(DotError.CODE_HTTP, "backbone is down")
+			var error := GSError.make(GSError.CODE_HTTP, "backbone is down")
 			error.http_status = status
-			return DotResult.failure(error)
-		if path == DotStatsReporter.PLAYER_PATH:
-			return DotResult.success({
+			return GSResult.failure(error)
+		if path == GSStatsReporter.PLAYER_PATH:
+			return GSResult.success({
 				"ok": true, "player": str(query["player"]), "name": "Ada",
 				"stats": [{"key": "kills", "kind": "COUNTER", "value": 412.0}],
 			})
-		return DotResult.success({
+		return GSResult.success({
 			"ok": true, "stat": {"key": str(query["stat"])},
 			"rows": [{"rank": 1, "player": "p1", "value": 9130.0}],
 			"self": {"rank": 37} if query.has("player") else null,
 		})
 
 
-## A stand-in for GameSpice Auth's DotAuthClient, the player's own token.
+## A stand-in for GameSpice Auth's GSAuthClient, the player's own token.
 class FakeApp extends RefCounted:
 	var calls: Array[Dictionary] = []
 	var fail: bool = false
 
-	func post_app(path: String, body: Dictionary) -> DotResult:
+	func post_app(path: String, body: Dictionary) -> GSResult:
 		calls.append({"path": path, "body": body.duplicate(true)})
 		if fail:
-			return DotResult.fail(DotError.CODE_HTTP, "no network")
-		return DotResult.success({"players": 1, "readings": (body["stats"] as Dictionary).size()})
+			return GSResult.fail(GSError.CODE_HTTP, "no network")
+		return GSResult.success({"players": 1, "readings": (body["stats"] as Dictionary).size()})
 
-	func get_app(path: String, query: Dictionary) -> DotResult:
+	func get_app(path: String, query: Dictionary) -> GSResult:
 		calls.append({"path": path, "query": query.duplicate(true)})
-		return DotResult.success({"player": "me", "stats": []})
+		return GSResult.success({"player": "me", "stats": []})
 
 
-func _make_schema() -> DotStatsSchema:
-	var schema := DotStatsSchema.new()
+func _make_schema() -> GSStatsSchema:
+	var schema := GSStatsSchema.new()
 	schema.define(&"kills").publish = true
 	schema.define(&"deaths").publish = true
-	schema.define(&"top_speed", DotStatsDef.Kind.BEST).publish = true
-	schema.define(&"level", DotStatsDef.Kind.GAUGE).publish = true
+	schema.define(&"top_speed", GSStatsDef.Kind.BEST).publish = true
+	schema.define(&"level", GSStatsDef.Kind.GAUGE).publish = true
 	schema.define(&"secret")   # kept, never reported
 	return schema
 
 
 ## Every kind, for the stores. `best_lap` is the LOWEST, which ranks the other way.
-func _store_schema() -> DotStatsSchema:
-	var schema := DotStatsSchema.new()
+func _store_schema() -> GSStatsSchema:
+	var schema := GSStatsSchema.new()
 	schema.define(&"kills")
-	schema.define(&"level", DotStatsDef.Kind.GAUGE)
-	schema.define(&"top_speed", DotStatsDef.Kind.BEST)
-	schema.define(&"best_lap", DotStatsDef.Kind.LOWEST)
+	schema.define(&"level", GSStatsDef.Kind.GAUGE)
+	schema.define(&"top_speed", GSStatsDef.Kind.BEST)
+	schema.define(&"best_lap", GSStatsDef.Kind.LOWEST)
 	return schema
 
 
@@ -86,7 +86,7 @@ func _done() -> void:
 	_completed += 1
 
 
-func _check(what: String, passed: bool, res: DotResult = null) -> void:
+func _check(what: String, passed: bool, res: GSResult = null) -> void:
 	if passed:
 		_passed += 1
 		_line("  %-48s ok" % what)
@@ -99,15 +99,15 @@ func _check(what: String, passed: bool, res: DotResult = null) -> void:
 
 
 func _hitzone_schema_valid() -> bool:
-	var schema := DotStatsSchema.new()
-	DotStatsHitzones.declare(schema)
+	var schema := GSStatsSchema.new()
+	GSStatsHitzones.declare(schema)
 	return schema.validate().ok
 
 
 func _hooks_published() -> bool:
-	var schema := DotStatsSchema.new()
-	DotStatsHitzones.declare(schema)
-	DotStatsPenetration.declare(schema)
+	var schema := GSStatsSchema.new()
+	GSStatsHitzones.declare(schema)
+	GSStatsPenetration.declare(schema)
 	for d in schema.stats:
 		if not d.publish:
 			return false
@@ -122,15 +122,15 @@ func _test_reporter_reads() -> void:
 	_section("reporter reads")
 
 	var backbone := FakeBackbone.new()
-	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	var reporter := GSStatsReporter.with_client(backbone, _make_schema())
 
 	var mine := await reporter.fetch_player(&"p1")
-	_check("fetch_player asks stats/player", mine.ok and str(backbone.calls[0]["path"]) == DotStatsReporter.PLAYER_PATH, mine)
+	_check("fetch_player asks stats/player", mine.ok and str(backbone.calls[0]["path"]) == GSStatsReporter.PLAYER_PATH, mine)
 	_check("for that player", str(backbone.calls[0]["query"]["player"]) == "p1")
 	_check("and returns the reply", mine.ok and (mine.value["stats"] as Array).size() == 1)
 
 	var top := await reporter.fetch_top(&"kills", 10, 0, &"p2")
-	_check("fetch_top asks stats/top", top.ok and str(backbone.calls[1]["path"]) == DotStatsReporter.TOP_PATH, top)
+	_check("fetch_top asks stats/top", top.ok and str(backbone.calls[1]["path"]) == GSStatsReporter.TOP_PATH, top)
 	var q: Dictionary = backbone.calls[1]["query"]
 	_check("with the stat, the page and the player", str(q["stat"]) == "kills" and int(q["limit"]) == 10 and str(q["player"]) == "p2")
 	_check("and self comes back", top.ok and top.value["self"] != null)
@@ -138,10 +138,10 @@ func _test_reporter_reads() -> void:
 	var anon := await reporter.fetch_top(&"kills")
 	_check("no player means no self", anon.ok and anon.value["self"] == null)
 
-	var without := DotStatsReporter.new()
+	var without := GSStatsReporter.new()
 	without.schema = _make_schema()
 	var none := await without.fetch_player(&"p1")
-	_check("no client is a state error", not none.ok and none.code() == DotError.CODE_STATE)
+	_check("no client is a state error", not none.ok and none.code() == GSError.CODE_STATE)
 
 	_line("")
 	_done()
@@ -173,35 +173,35 @@ func _v2_json() -> Dictionary:
 func _v2_refused(patch: Callable) -> bool:
 	var data := _v2_json()
 	patch.call(data["stats"])
-	return not DotStatsSchema.from_dictionary(data).ok
+	return not GSStatsSchema.from_dictionary(data).ok
 
 
 func _test_v2_declarations() -> void:
 	_section("v2 declarations")
 
-	var parsed := DotStatsSchema.from_dictionary(_v2_json())
+	var parsed := GSStatsSchema.from_dictionary(_v2_json())
 	_check("a v2 schema loads", parsed.ok, parsed)
 	if not parsed.ok:
 		return
-	var schema: DotStatsSchema = parsed.value
+	var schema: GSStatsSchema = parsed.value
 	var kills := schema.find(&"g.kills")
-	_check("fields are read", kills.value_type == DotStatsDef.ValueType.INT and kills.breakdowns == PackedStringArray(["weapon", "map"]) and kills.max_rate == 120.0 and kills.column == "default" and kills.order == 10)
+	_check("fields are read", kills.value_type == GSStatsDef.ValueType.INT and kills.breakdowns == PackedStringArray(["weapon", "map"]) and kills.max_rate == 120.0 and kills.column == "default" and kills.order == 10)
 	var longest := schema.find(&"g.longest")
 	_check("bounds are read", longest.has_min and longest.has_max and longest.max_value == 500.0 and longest.format == "distance")
 	_check("a derived stat is read", schema.find(&"g.accuracy").derived != null and schema.find(&"g.accuracy").derived.scale == 100.0)
 	_check("rules are read", schema.rules.size() == 3 and schema.rules[2].when == PackedStringArray(["hit"]) and schema.rules[1].value_field == "distance")
 
-	var again := DotStatsSchema.from_dictionary(schema.to_dictionary())
+	var again := GSStatsSchema.from_dictionary(schema.to_dictionary())
 	_check("it round trips", again.ok and JSON.stringify(again.value.to_dictionary()) == JSON.stringify(schema.to_dictionary()), again)
 
-	var v1 := DotStatsSchema.from_dictionary({"stats": [{"id": "kills", "kind": "COUNTER", "publish": true}]})
+	var v1 := GSStatsSchema.from_dictionary({"stats": [{"id": "kills", "kind": "COUNTER", "publish": true}]})
 	_check("a v1 declaration still loads with v1 defaults", v1.ok and v1.value.find(&"kills").source == "server" and v1.value.find(&"kills").breakdowns.is_empty() and not v1.value.find(&"kills").has_max)
 
-	var wire := DotStatsReporter.wire_definition(longest)
+	var wire := GSStatsReporter.wire_definition(longest)
 	_check("define sends type, min and max", wire["type"] == "NUMBER" and wire["min"] == 0.0 and wire["max"] == 500.0 and wire["key"] == "g.longest")
-	var wire_kills := DotStatsReporter.wire_definition(kills)
+	var wire_kills := GSStatsReporter.wire_definition(kills)
 	_check("and the v2 fields", wire_kills["maxRate"] == 120.0 and wire_kills["breakdowns"] == ["weapon", "map"] and wire_kills["column"] == "default" and not wire_kills.has("publish"))
-	_check("an unbounded stat sends no bound", not DotStatsReporter.wire_definition(schema.find(&"g.shots")).has("min"))
+	_check("an unbounded stat sends no bound", not GSStatsReporter.wire_definition(schema.find(&"g.shots")).has("min"))
 
 	_check("five breakdowns are refused", _v2_refused(func(l): l[0]["breakdowns"] = ["weapon", "map", "class", "mode", "team"]))
 	_check("min above max is refused", _v2_refused(func(l): l[2]["min"] = 900))
@@ -212,11 +212,11 @@ func _test_v2_declarations() -> void:
 	_check("a derived input that is not declared is refused", _v2_refused(func(l): l[4]["derived"]["den"] = "g.nope"))
 	_check("a derived breakdown its inputs lack is refused", _v2_refused(func(l): l[4]["breakdowns"] = ["map"]))
 	_check("max_rate on a best is refused", _v2_refused(func(l): l[2]["max_rate"] = 5))
-	_check("a rule on an undeclared stat is refused", not DotStatsSchema.from_dictionary({"stats": [], "rules": [{"on": "kill", "stat": "x"}]}).ok)
-	_check("a newer version is refused", not DotStatsSchema.from_dictionary({"version": 3, "stats": []}).ok)
+	_check("a rule on an undeclared stat is refused", not GSStatsSchema.from_dictionary({"stats": [], "rules": [{"on": "kill", "stat": "x"}]}).ok)
+	_check("a newer version is refused", not GSStatsSchema.from_dictionary({"version": 3, "stats": []}).ok)
 
-	var values := DotStatsValues.new()
-	var acc: DotStatsDerived = schema.find(&"g.accuracy").derived
+	var values := GSStatsValues.new()
+	var acc: GSStatsDerived = schema.find(&"g.accuracy").derived
 	values.record(kills, 3.0, {"weapon": "rifle"})
 	_check("a derived stat with no divisor is NAN", is_nan(acc.compute(values)))
 	values.record(schema.find(&"g.shots"), 4.0, {"weapon": "rifle"})
@@ -229,8 +229,8 @@ func _test_v2_declarations() -> void:
 func _test_cells_and_events() -> void:
 	_section("cells and events")
 
-	var schema: DotStatsSchema = DotStatsSchema.from_dictionary(_v2_json()).value
-	var tracker := DotStatsTracker.new()
+	var schema: GSStatsSchema = GSStatsSchema.from_dictionary(_v2_json()).value
+	var tracker := GSStatsTracker.new()
 	tracker.schema = schema
 	tracker.name = "CellTracker"
 	add_child(tracker)
@@ -261,7 +261,7 @@ func _test_cells_and_events() -> void:
 
 	_check("the cells group for the wire", s.to_by()["weapon"]["rifle"]["g.kills"] == 2.0 and s.to_by()["map"]["dm_canyon"]["g.kills"] == 4.0)
 
-	var delta := DotStatsValues.new()
+	var delta := GSStatsValues.new()
 	delta.record(schema.find(&"g.kills"), 5.0, {"weapon": "rifle"})
 	s.merge_from(delta, schema)
 	_check("merge_from folds cells by kind", s.get_cell(&"g.kills", "weapon:rifle") == 7.0)
@@ -282,7 +282,7 @@ func _test_cells_and_events() -> void:
 	_check("an event with a missing value field skips that rule", tracker.event(&"p2", &"kill", {}) == 1)
 	_check("event_seen is emitted for every event", seen.size() == 5)
 
-	schema.rules.append(DotStatsRule.custom(&"bonus", &"g.kills", func(_pl, d): return float(d["n"]) * 2.0 if d.has("n") else NAN))
+	schema.rules.append(GSStatsRule.custom(&"bonus", &"g.kills", func(_pl, d): return float(d["n"]) * 2.0 if d.has("n") else NAN))
 	tracker.event(&"p2", &"bonus", {"n": 3})
 	tracker.event(&"p2", &"bonus", {})
 	_check("a custom rule decides its reading", s2.get_value(&"g.kills") == 8.0)
@@ -297,8 +297,8 @@ func _test_cells_and_events() -> void:
 
 
 ## The event log half of the cells section: rows, sessions, links and bots.
-func _check_event_log(schema: DotStatsSchema) -> void:
-	var logged := DotStatsTracker.new()
+func _check_event_log(schema: GSStatsSchema) -> void:
+	var logged := GSStatsTracker.new()
 	logged.schema = schema
 	logged.log_events = true
 	logged.max_events = 100
@@ -332,7 +332,7 @@ func _test_batch_ids() -> void:
 	_section("batch ids and source")
 
 	var backbone := FakeBackbone.new()
-	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	var reporter := GSStatsReporter.with_client(backbone, _make_schema())
 	reporter.queue(&"p1", "Ada", {"kills": 3})
 	backbone.fail = true
 	await reporter.flush()
@@ -345,8 +345,8 @@ func _test_batch_ids() -> void:
 	_check("what was queued meanwhile follows as a new batch", ok.ok and backbone.calls.size() == 4 and backbone.calls[3]["body"]["batch"] != backbone.calls[2]["body"]["batch"] and reporter.queued() == 0)
 	_check("a batch id is sent on the first attempt", str(backbone.calls[0]["body"].get("batch", "")) != "")
 
-	var client_def: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "COUNTER", "source": "client"}, {"id": "y", "kind": "COUNTER"}]}).value
-	_check("define sends source in the site's case", DotStatsReporter.wire_definition(client_def.find(&"x"))["source"] == "CLIENT" and DotStatsReporter.wire_definition(client_def.find(&"y"))["source"] == "SERVER")
+	var client_def: GSStatsSchema = GSStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "COUNTER", "source": "client"}, {"id": "y", "kind": "COUNTER"}]}).value
+	_check("define sends source in the site's case", GSStatsReporter.wire_definition(client_def.find(&"x"))["source"] == "CLIENT" and GSStatsReporter.wire_definition(client_def.find(&"y"))["source"] == "SERVER")
 	_line("")
 	_done()
 
@@ -354,12 +354,12 @@ func _test_batch_ids() -> void:
 func _test_v2_submit() -> void:
 	_section("v2 submit shape, max_rate, breakdown cells in SQL")
 
-	var schema: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [
+	var schema: GSStatsSchema = GSStatsSchema.from_dictionary({"stats": [
 		{"id": "kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon"], "max_rate": 60},
 		{"id": "best", "kind": "BEST", "publish": true},
 	]}).value
 	var backbone := FakeBackbone.new()
-	var tracker := DotStatsTracker.new()
+	var tracker := GSStatsTracker.new()
 	tracker.schema = schema
 	tracker.report_to_backbone = true
 	tracker.define_on_start = false
@@ -379,20 +379,20 @@ func _test_v2_submit() -> void:
 
 	var call: Dictionary = backbone.calls[0]
 	var body: Dictionary = call["body"]
-	_check("it posts to stats/v2/submit", str(call["path"]) == "stats/v2/submit" and DotStatsReporter.SUBMIT_PATH == "stats/v2/submit")
+	_check("it posts to stats/v2/submit", str(call["path"]) == "stats/v2/submit" and GSStatsReporter.SUBMIT_PATH == "stats/v2/submit")
 	_check("with v, batch and the server id", int(body["v"]) == 2 and str(body["batch"]) != "" and int(body["server"]) == 12)
 	var by_player := {}
 	for p in body["players"]:
 		by_player[p["player"]] = p
-	_check("a player row carries bot, name, session and stats", by_player.has("human") and by_player["human"]["bot"] == false and by_player["human"]["session"] == DotStatsReporter.wire_session_id("s-1") and float(by_player["human"]["stats"]["kills"]) == 3.0)
+	_check("a player row carries bot, name, session and stats", by_player.has("human") and by_player["human"]["bot"] == false and by_player["human"]["session"] == GSStatsReporter.wire_session_id("s-1") and float(by_player["human"]["stats"]["kills"]) == 3.0)
 	_check("breakdown cells go in by", float(by_player["human"]["by"]["weapon"]["rifle"]["kills"]) == 3.0)
 	_check("a linked user is sent for a human", by_player["human"].get("user", "") == "u1")
 	_check("a bot is flagged and never carries a user", by_player["bot1"]["bot"] == true and not by_player["bot1"].has("user"))
 	var sessions := {}
 	for sess in body["sessions"]:
 		sessions[str(sess["session"])] = sess
-	var s1: Dictionary = sessions.get(DotStatsReporter.wire_session_id("s-1"), {})
-	var s2: Dictionary = sessions.get(DotStatsReporter.wire_session_id("s-2"), {})
+	var s1: Dictionary = sessions.get(GSStatsReporter.wire_session_id("s-1"), {})
+	var s2: Dictionary = sessions.get(GSStatsReporter.wire_session_id("s-2"), {})
 	_check("sessions list both, the closed one with left", sessions.size() == 2 and s1.get("left", 1) == null and s2.get("left") != null and s1.get("map") == "dm_canyon" and s2.get("bot") == true)
 	_check("a session is sent once it is acknowledged", backbone.calls.size() == 1)
 	await tracker.flush()
@@ -428,13 +428,13 @@ func _test_v2_submit() -> void:
 
 ## The SQL half of the v2 section: a breakdown cell is keyed by dim.
 func _check_v2_sql_cells() -> void:
-	var spec := DotStatsSqlSchema.table_spec()
+	var spec := GSStatsSqlSchema.table_spec()
 	var names: Array = []
 	for c in spec["columns"]:
 		names.append(c["name"])
-	_check("the SQL table has a dim column in its key", "dim" in names and "dim" in spec["primary_key"] and DotSqlSchema.validate(spec).ok)
-	_check("and the migration upgrades a table without one", DotStatsSqlSchema.migration_steps().size() == 3)
-	var loaded := DotStatsValues.from_dictionary({"kills": 4, "kills|weapon:rifle": 3})
+	_check("the SQL table has a dim column in its key", "dim" in names and "dim" in spec["primary_key"] and GSSqlSchema.validate(spec).ok)
+	_check("and the migration upgrades a table without one", GSStatsSqlSchema.migration_steps().size() == 3)
+	var loaded := GSStatsValues.from_dictionary({"kills": 4, "kills|weapon:rifle": 3})
 	_check("a cell key loads into cells, not the totals", loaded.get_value(&"kills") == 4.0 and float(loaded.cells.get("kills|weapon:rifle", 0.0)) == 3.0 and not loaded.has(&"kills|weapon:rifle"))
 
 
@@ -442,7 +442,7 @@ func _test_client() -> void:
 	_section("client")
 
 	var app := FakeApp.new()
-	var mine := DotStatsClient.new()
+	var mine := GSStatsClient.new()
 	mine.name = "MyStats"
 	mine.schema = _make_schema()
 	for d in mine.schema.stats:
@@ -467,10 +467,10 @@ func _test_client() -> void:
 	var undeclared := mine.record(&"assists")
 	_check("an undeclared stat is refused", not undeclared.ok)
 	var forged := mine.record(&"rank_points", 99.0)
-	_check("a source=server stat is refused by the client", not forged.ok and forged.code() == DotError.CODE_FORBIDDEN and not mine.session_values().has(&"rank_points") and mine.pending() == 2)
+	_check("a source=server stat is refused by the client", not forged.ok and forged.code() == GSError.CODE_FORBIDDEN and not mine.session_values().has(&"rank_points") and mine.pending() == 2)
 
 	var flushed := await mine.flush()
-	_check("a flush posts to stats/submit", flushed.ok and str(app.calls[0]["path"]) == DotStatsClient.SUBMIT_PATH, flushed)
+	_check("a flush posts to stats/submit", flushed.ok and str(app.calls[0]["path"]) == GSStatsClient.SUBMIT_PATH, flushed)
 	var body: Dictionary = app.calls[0]["body"]
 	_check("with the delta and no app when the token decides", float(body["stats"]["kills"]) == 2.0 and not body.has("app"))
 	_check("and clears the delta", mine.pending() == 0)
@@ -485,10 +485,10 @@ func _test_client() -> void:
 	_check("a device build names its app", int(app.calls[2]["body"]["app"]) == 12)
 
 	var got := await mine.fetch_mine()
-	_check("fetch_mine asks stats/me for the app", got.ok and str(app.calls[3]["path"]) == DotStatsClient.MINE_PATH and int(app.calls[3]["query"]["app"]) == 12, got)
+	_check("fetch_mine asks stats/me for the app", got.ok and str(app.calls[3]["path"]) == GSStatsClient.MINE_PATH and int(app.calls[3]["query"]["app"]) == 12, got)
 
 	var top := await mine.fetch_top(&"kills", 5)
-	_check("fetch_top asks stats/top", top.ok and str(app.calls[4]["path"]) == DotStatsClient.TOP_PATH and int(app.calls[4]["query"]["limit"]) == 5)
+	_check("fetch_top asks stats/top", top.ok and str(app.calls[4]["path"]) == GSStatsClient.TOP_PATH and int(app.calls[4]["query"]["limit"]) == 5)
 
 	var idle := await mine.flush()
 	_check("an idle flush sends nothing", idle.ok and app.calls.size() == 5)
@@ -503,12 +503,12 @@ func _test_client() -> void:
 func _test_site_contract() -> void:
 	_section("site contract: stats/v2/submit")
 	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
-	var schema: DotStatsSchema = DotStatsSchema.from_dictionary({"stats": [
+	var schema: GSStatsSchema = GSStatsSchema.from_dictionary({"stats": [
 		{"id": "fc.kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon", "map"]},
 		{"id": "fc.longest_kill", "kind": "BEST", "publish": true},
 	]}).value
 	var backbone := FakeBackbone.new()
-	var tracker := DotStatsTracker.new()
+	var tracker := GSStatsTracker.new()
 	tracker.schema = schema
 	tracker.report_to_backbone = true
 	tracker.define_on_start = false
@@ -543,7 +543,7 @@ func _test_site_contract() -> void:
 			bot = p
 	_check("the human carries user, the bot does not", human.get("user", "") == "u1" and bot["bot"] == true and not bot.has("user"))
 	_check("the cells are by axis, value, stat", float(human["by"]["weapon"]["zee.rifle"]["fc.kills"]) == 3.0 and float(human["by"]["map"]["dm_canyon"]["fc.kills"]) == 3.0)
-	_check("a non-UUID game session id maps to one stable UUID", human["session"] == DotStatsReporter.wire_session_id("game-session-1") and human["session"] != "game-session-1")
+	_check("a non-UUID game session id maps to one stable UUID", human["session"] == GSStatsReporter.wire_session_id("game-session-1") and human["session"] != "game-session-1")
 
 	# The validator itself must refuse what the site refuses, or the check above proves nothing.
 	var bad := body.duplicate(true)
@@ -564,8 +564,8 @@ func _test_kills() -> void:
 	_section("kills: who killed whom")
 	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
 	var backbone := FakeBackbone.new()
-	var tracker := DotStatsTracker.new()
-	tracker.schema = DotStatsSchema.from_dictionary({"stats": [{"id": "fc.kills", "kind": "COUNTER", "publish": true}]}).value
+	var tracker := GSStatsTracker.new()
+	tracker.schema = GSStatsSchema.from_dictionary({"stats": [{"id": "fc.kills", "kind": "COUNTER", "publish": true}]}).value
 	tracker.define_on_start = false
 	tracker.report_interval = 0.0
 	tracker.reporter.client = backbone
@@ -591,8 +591,8 @@ func _test_kills() -> void:
 		tracker.reporter.note_kill({"killer": "x", "victim": "y%d" % i, "t": 1})
 	var before: int = backbone.calls.size()
 	await tracker.flush()
-	_check("a batch carries at most the kill limit", backbone.calls.size() - before == 3 and backbone.calls[before]["body"]["kills"].size() == DotStatsReporter.KILL_LIMIT)
-	var feed := DotStatsEventFeed.new(tracker)
+	_check("a batch carries at most the kill limit", backbone.calls.size() - before == 3 and backbone.calls[before]["body"]["kills"].size() == GSStatsReporter.KILL_LIMIT)
+	var feed := GSStatsEventFeed.new(tracker)
 	feed.key_of = func(id: Variant) -> StringName: return StringName("p%s" % id)
 	feed.is_bot = func(id: Variant) -> bool: return int(id) >= 100
 	feed.name_of = func(id: Variant) -> String: return "p%s" % id if int(id) >= 100 else ""
@@ -605,28 +605,28 @@ func _test_kills() -> void:
 	var fed: Array = tracker.reporter._kills
 	var last: Dictionary = fed[fed.size() - 1]
 	_check("feed: fields", last["killer"] == "p1" and last["victim"] == "p100" and last["victim_bot"] == true and last["killer_bot"] == false and last["killer_name"] == "Ada" and last["victim_name"] == "" and last["map"] == "dm_feed" and last["headshot"] == true)
-	_check("hitzones: declared once", DotStatsHitzones.declare(tracker.schema) == 4 and DotStatsHitzones.declare(tracker.schema) == 0)
+	_check("hitzones: declared once", GSStatsHitzones.declare(tracker.schema) == 4 and GSStatsHitzones.declare(tracker.schema) == 0)
 	_check("hitzones: a hit files hits, damage, kills and side", feed.report_hit(1, 100, "rifle", &"head", 80.0, true, &"left"))
-	var hv: DotStatsValues = tracker.session_values(&"p1")
-	_check("hitzones: per weapon and zone cells", hv.get_cell(DotStatsHitzones.HITS, "weapon:rifle") == 1.0 and hv.get_cell(DotStatsHitzones.DAMAGE, "zone:head") == 80.0 and hv.get_cell(DotStatsHitzones.KILLS, "zone:head") == 1.0)
-	_check("hitzones: joint weapon axes", hv.get_cell(DotStatsHitzones.HITS, "weapon_zone:rifle.head") == 1.0 and hv.get_cell(DotStatsHitzones.SIDE_HITS, "weapon_side:rifle.left") == 1.0)
-	_check("hitzones: side cell", hv.get_cell(DotStatsHitzones.SIDE_HITS, "side:left") == 1.0)
+	var hv: GSStatsValues = tracker.session_values(&"p1")
+	_check("hitzones: per weapon and zone cells", hv.get_cell(GSStatsHitzones.HITS, "weapon:rifle") == 1.0 and hv.get_cell(GSStatsHitzones.DAMAGE, "zone:head") == 80.0 and hv.get_cell(GSStatsHitzones.KILLS, "zone:head") == 1.0)
+	_check("hitzones: joint weapon axes", hv.get_cell(GSStatsHitzones.HITS, "weapon_zone:rifle.head") == 1.0 and hv.get_cell(GSStatsHitzones.SIDE_HITS, "weapon_side:rifle.left") == 1.0)
+	_check("hitzones: side cell", hv.get_cell(GSStatsHitzones.SIDE_HITS, "side:left") == 1.0)
 	_check("hitzones: self hits and empty zones are refused", not feed.report_hit(1, 1, "rifle", &"head", 5.0) and not feed.report_hit(1, 100, "rifle", &""))
-	_check("hitzones: the declared schema validates", DotStatsHitzones.declare(DotStatsSchema.new()) == 4 and _hitzone_schema_valid())
+	_check("hitzones: the declared schema validates", GSStatsHitzones.declare(GSStatsSchema.new()) == 4 and _hitzone_schema_valid())
 	_check("hook-declared stats pass the reporter publish filter", _hooks_published())
-	_check("penetration: declared once", DotStatsPenetration.declare(tracker.schema) == 3 and DotStatsPenetration.declare(tracker.schema) == 0)
-	var through := DotStatsFakeDamage.new()
+	_check("penetration: declared once", GSStatsPenetration.declare(tracker.schema) == 3 and GSStatsPenetration.declare(tracker.schema) == 0)
+	var through := GSStatsFakeDamage.new()
 	through.attacker = 1
 	through.victim = 100
 	through.weapon_id = "rifle"
 	through.hit_group = &"knee"
 	through.health_lost = 20.0
 	through.context = {"penetrated": 1, "wallbang": false, "hit_side": "right"}
-	_check("hitzones: a hit through a body files a body-penetration and the knee zone", DotStatsDamage.report(feed, through) == 2 and tracker.session_values(&"p1").get_cell(DotStatsHitzones.HITS, "weapon_zone:rifle.knee") == 1.0 and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:body") == 1.0)
-	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_WALL, 40.0, true))
-	var pv: DotStatsValues = tracker.session_values(&"p1")
-	_check("penetration: cells per weapon and kind", pv.get_cell(DotStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(DotStatsPenetration.DAMAGE, "weapon:rifle") == 60.0 and pv.get_cell(DotStatsPenetration.KILLS, "kind:wall") == 1.0)
-	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", DotStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(DotStatsPenetration.HITS, "kind:ricochet") == 1.0)
+	_check("hitzones: a hit through a body files a body-penetration and the knee zone", GSStatsDamage.report(feed, through) == 2 and tracker.session_values(&"p1").get_cell(GSStatsHitzones.HITS, "weapon_zone:rifle.knee") == 1.0 and tracker.session_values(&"p1").get_cell(GSStatsPenetration.HITS, "kind:body") == 1.0)
+	_check("penetration: a wall kill files hit, damage and kill", feed.report_penetration(1, 100, "rifle", GSStatsPenetration.KIND_WALL, 40.0, true))
+	var pv: GSStatsValues = tracker.session_values(&"p1")
+	_check("penetration: cells per weapon and kind", pv.get_cell(GSStatsPenetration.HITS, "kind:wall") == 1.0 and pv.get_cell(GSStatsPenetration.DAMAGE, "weapon:rifle") == 60.0 and pv.get_cell(GSStatsPenetration.KILLS, "kind:wall") == 1.0)
+	_check("penetration: a ricochet hit files under its own kind", feed.report_penetration(1, 100, "rifle", GSStatsPenetration.KIND_RICOCHET, 12.0) and tracker.session_values(&"p1").get_cell(GSStatsPenetration.HITS, "kind:ricochet") == 1.0)
 	_check("penetration: self hits and empty kinds are refused", not feed.report_penetration(1, 1, "rifle", &"body", 5.0) and not feed.report_penetration(1, 100, "rifle", &""))
 	_kills_walls_and_shots(tracker, feed)
 	tracker.report_to_backbone = false
@@ -635,39 +635,39 @@ func _test_kills() -> void:
 
 
 ## Wall passes per material and shot accuracy, filed through the feed once their stats are declared.
-func _kills_walls_and_shots(tracker: DotStatsTracker, feed: DotStatsEventFeed) -> void:
-	_check("walls: declared once", DotStatsPenetration.declare_walls(tracker.schema) == 2 and DotStatsPenetration.declare_walls(tracker.schema) == 0)
-	var fake_shot := DotStatsFakeShot.new()
+func _kills_walls_and_shots(tracker: GSStatsTracker, feed: GSStatsEventFeed) -> void:
+	_check("walls: declared once", GSStatsPenetration.declare_walls(tracker.schema) == 2 and GSStatsPenetration.declare_walls(tracker.schema) == 0)
+	var fake_shot := GSStatsFakeShot.new()
 	fake_shot.attacker = 1
 	fake_shot.weapon_id = "rifle"
 	fake_shot.penetrations = [{"material": &"wood", "cost": 0.4}, {"material": &"steel", "cost": 2.5}, {"material": &"wood", "cost": 0.2}]
-	_check("walls: a shot files one pass per wall", DotStatsDamage.report_shot(feed, fake_shot) == 3)
-	var wv: DotStatsValues = tracker.session_values(&"p1")
-	_check("walls: cost and passes per material", is_equal_approx(wv.get_cell(DotStatsPenetration.COST, "material:wood"), 0.6) and wv.get_cell(DotStatsPenetration.PASSES, "material:wood") == 2.0 and wv.get_cell(DotStatsPenetration.PASSES, "material:steel") == 1.0)
-	_check("walls: joint weapon.material axis", is_equal_approx(wv.get_cell(DotStatsPenetration.COST, "weapon_material:rifle.steel"), 2.5))
-	_check("walls: no shot, no material and a world shooter file nothing", DotStatsDamage.report_shot(feed, null) == 0 and not feed.report_wall_pass(1, "rifle", &"", 1.0) and not feed.report_wall_pass(null, "rifle", &"wood", 1.0))
-	_check("walls: the declared schema validates", DotStatsPenetration.declare_walls(DotStatsSchema.new()) == 2)
-	_check("shots: refused until declared", DotStatsDamage.report_shot_outcome(feed, fake_shot) == 0)
-	_check("shots: declared once", DotStatsShots.declare(tracker.schema) == 2 and DotStatsShots.declare(tracker.schema) == 0)
-	var missed := DotStatsDamage.report_shot_outcome(feed, fake_shot)
+	_check("walls: a shot files one pass per wall", GSStatsDamage.report_shot(feed, fake_shot) == 3)
+	var wv: GSStatsValues = tracker.session_values(&"p1")
+	_check("walls: cost and passes per material", is_equal_approx(wv.get_cell(GSStatsPenetration.COST, "material:wood"), 0.6) and wv.get_cell(GSStatsPenetration.PASSES, "material:wood") == 2.0 and wv.get_cell(GSStatsPenetration.PASSES, "material:steel") == 1.0)
+	_check("walls: joint weapon.material axis", is_equal_approx(wv.get_cell(GSStatsPenetration.COST, "weapon_material:rifle.steel"), 2.5))
+	_check("walls: no shot, no material and a world shooter file nothing", GSStatsDamage.report_shot(feed, null) == 0 and not feed.report_wall_pass(1, "rifle", &"", 1.0) and not feed.report_wall_pass(null, "rifle", &"wood", 1.0))
+	_check("walls: the declared schema validates", GSStatsPenetration.declare_walls(GSStatsSchema.new()) == 2)
+	_check("shots: refused until declared", GSStatsDamage.report_shot_outcome(feed, fake_shot) == 0)
+	_check("shots: declared once", GSStatsShots.declare(tracker.schema) == 2 and GSStatsShots.declare(tracker.schema) == 0)
+	var missed := GSStatsDamage.report_shot_outcome(feed, fake_shot)
 	fake_shot.landed = true
-	_check("shots: a miss files a shot, a hit files both", missed == 1 and DotStatsDamage.report_shot_outcome(feed, fake_shot) == 2)
-	var sv: DotStatsValues = tracker.session_values(&"p1")
-	_check("shots: accuracy counters per weapon", sv.get_cell(DotStatsShots.SHOTS, "weapon:rifle") == 2.0 and sv.get_cell(DotStatsShots.HITS, "weapon:rifle") == 1.0)
-	_check("shots: no shot and a world shooter file nothing", DotStatsDamage.report_shot_outcome(feed, null) == 0 and not feed.report_shot_outcome(null, "rifle", true))
-	var shot_sig := DotStatsShotSource.new()
-	var bare := DotStatsTracker.new()
-	bare.schema = DotStatsSchema.new()
+	_check("shots: a miss files a shot, a hit files both", missed == 1 and GSStatsDamage.report_shot_outcome(feed, fake_shot) == 2)
+	var sv: GSStatsValues = tracker.session_values(&"p1")
+	_check("shots: accuracy counters per weapon", sv.get_cell(GSStatsShots.SHOTS, "weapon:rifle") == 2.0 and sv.get_cell(GSStatsShots.HITS, "weapon:rifle") == 1.0)
+	_check("shots: no shot and a world shooter file nothing", GSStatsDamage.report_shot_outcome(feed, null) == 0 and not feed.report_shot_outcome(null, "rifle", true))
+	var shot_sig := GSStatsShotSource.new()
+	var bare := GSStatsTracker.new()
+	bare.schema = GSStatsSchema.new()
 	_check("shots: bind_shots connects once declared", feed.bind_shots(shot_sig.resolved))
 	fake_shot.landed = false
 	shot_sig.resolved.emit(fake_shot)
 	fake_shot.landed = true
 	shot_sig.resolved.emit(fake_shot)
-	var bv: DotStatsValues = tracker.session_values(&"p1")
-	_check("shots: a bound signal files shots and hits", bv.get_cell(DotStatsShots.SHOTS, "weapon:rifle") == 4.0 and bv.get_cell(DotStatsShots.HITS, "weapon:rifle") == 2.0)
-	_check("shots: bind_shots refuses an undeclared schema", not DotStatsEventFeed.new(bare).bind_shots(shot_sig.resolved))
+	var bv: GSStatsValues = tracker.session_values(&"p1")
+	_check("shots: a bound signal files shots and hits", bv.get_cell(GSStatsShots.SHOTS, "weapon:rifle") == 4.0 and bv.get_cell(GSStatsShots.HITS, "weapon:rifle") == 2.0)
+	_check("shots: bind_shots refuses an undeclared schema", not GSStatsEventFeed.new(bare).bind_shots(shot_sig.resolved))
 	bare.free()
-	_check("shots: the declared schema validates", DotStatsShots.declare(DotStatsSchema.new()) == 2)
+	_check("shots: the declared schema validates", GSStatsShots.declare(GSStatsSchema.new()) == 2)
 
 
 func _validate_submit(body: Dictionary, fx: Dictionary) -> Array:
@@ -769,8 +769,8 @@ func _is_int(v: Variant, minimum: int) -> bool:
 	return (v is int and v >= minimum) or (v is float and v == floorf(v) and v >= minimum)
 
 
-## Stand-in for a GameSpice Combat DotDamage (GameSpice Stats names no combat class).
-class DotStatsFakeShot:
+## Stand-in for a GameSpice Combat GSDamage (GameSpice Stats names no combat class).
+class GSStatsFakeShot:
 	extends RefCounted
 	var attacker: Variant
 	var weapon_id: String
@@ -783,12 +783,12 @@ class DotStatsFakeShot:
 
 
 ## Stand-in for GameSpice Combat's `shot_resolved` signal.
-class DotStatsShotSource:
+class GSStatsShotSource:
 	extends RefCounted
 	signal resolved(shot: Object)
 
 
-class DotStatsFakeDamage:
+class GSStatsFakeDamage:
 	extends RefCounted
 	var attacker: Variant
 	var victim: Variant

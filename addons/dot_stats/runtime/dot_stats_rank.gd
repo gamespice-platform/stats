@@ -1,4 +1,4 @@
-class_name DotStatsRank
+class_name GSStatsRank
 extends RefCounted
 ## One "rank_score" per player from declared stats (weighted formula) or from duels (Elo), chosen by configuration per app and per server.
 
@@ -35,13 +35,13 @@ var key_fn: Callable = Callable()
 
 ## Elo mode: player to rating.
 var ratings: Dictionary = {}
-## Player to the [DotStatsValues] they held when the session began; see [method load_baseline].
+## Player to the [GSStatsValues] they held when the session began; see [method load_baseline].
 var baselines: Dictionary = {}
 
 
 ## Adds the published rank stat to [param schema].
-static func declare(schema: DotStatsSchema, id: StringName = STAT_ID, display: String = "Rank score") -> DotStatsDef:
-	var def := DotStatsDef.make(id, DotStatsDef.Kind.GAUGE, display)
+static func declare(schema: GSStatsSchema, id: StringName = STAT_ID, display: String = "Rank score") -> GSStatsDef:
+	var def := GSStatsDef.make(id, GSStatsDef.Kind.GAUGE, display)
 	def.decimals = 0
 	def.publish = true
 	schema.stats.append(def)
@@ -77,15 +77,15 @@ func configure_scoped(cfg: Dictionary, app: String = "", server: String = "") ->
 
 
 ## Loads [method configure_scoped] from a JSON file.
-func load_json(path: String, app: String = "", server: String = "") -> DotResult:
+func load_json(path: String, app: String = "", server: String = "") -> GSResult:
 	var text := FileAccess.get_file_as_string(path)
 	if text == "":
-		return DotResult.fail(DotError.CODE_IO, "No rank file at %s." % path)
+		return GSResult.fail(GSError.CODE_IO, "No rank file at %s." % path)
 	var parsed: Variant = JSON.parse_string(text)
 	if not parsed is Dictionary:
-		return DotResult.fail(DotError.CODE_PARSE, "%s is not a JSON object." % path)
+		return GSResult.fail(GSError.CODE_PARSE, "%s is not a JSON object." % path)
 	configure_scoped(parsed, app, server)
-	return DotResult.success()
+	return GSResult.success()
 
 
 ## The cvar form: "weighted", "elo", or "weighted:kills=1,deaths=-0.5,headshots=0.5". Returns false on an unknown mode.
@@ -188,9 +188,9 @@ func publish(player: Variant, values: Dictionary) -> float:
 
 
 ## Lifetime values plus this session's, for [method publish]. With [param schema] each stat merges by its kind (a BEST keeps the higher); without, every stat adds, which is only right for counters.
-static func combine(baseline: Dictionary, session: DotStatsValues, schema: DotStatsSchema = null) -> Dictionary:
+static func combine(baseline: Dictionary, session: GSStatsValues, schema: GSStatsSchema = null) -> Dictionary:
 	if schema != null:
-		var held := DotStatsValues.from_dictionary(baseline)
+		var held := GSStatsValues.from_dictionary(baseline)
 		held.merge_from(session, schema)
 		return held.to_dictionary()
 	var out := {}
@@ -210,24 +210,24 @@ func store_key(player: Variant) -> StringName:
 
 
 ## Reads the player's stored lifetime totals once, at join, before this session's figures are flushed into the store (reading later would count them twice). Elo mode also seeds the rating from the stored rank.
-func load_baseline(store: DotStatsStore, player: Variant) -> DotResult:
-	var res: DotResult = await store.values_for(store_key(player))
+func load_baseline(store: GSStatsStore, player: Variant) -> GSResult:
+	var res: GSResult = await store.values_for(store_key(player))
 	if not res.ok:
 		return res
-	seed_baseline(player, res.value as DotStatsValues)
+	seed_baseline(player, res.value as GSStatsValues)
 	return res
 
 
 ## Sets the lifetime totals a player starts the session with, from any source (a store, the backbone, a test).
-func seed_baseline(player: Variant, lifetime: DotStatsValues) -> void:
+func seed_baseline(player: Variant, lifetime: GSStatsValues) -> void:
 	baselines[player] = lifetime
 	if mode == MODE_ELO and lifetime.values.has(stat_id):
 		seed_rating(player, float(lifetime.values[stat_id]))
 
 
 ## Weighted mode: publishes from the stored baseline plus [param session], so a short session does not reset a long career. A player with no baseline loaded ranks on the session alone.
-func publish_lifetime(player: Variant, session: DotStatsValues, schema: DotStatsSchema = null) -> float:
-	var base: DotStatsValues = baselines.get(player, null)
+func publish_lifetime(player: Variant, session: GSStatsValues, schema: GSStatsSchema = null) -> float:
+	var base: GSStatsValues = baselines.get(player, null)
 	var held := base.to_dictionary() if base != null else {}
 	return publish(player, combine(held, session, schema))
 

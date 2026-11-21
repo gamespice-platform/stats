@@ -1,4 +1,4 @@
-class_name DotStatsPoints
+class_name GSStatsPoints
 extends RefCounted
 ## One "points" score fed by configurable sources (kill, headshot, assist, streak, objective, survival); a game supplies events, never amounts.
 
@@ -49,8 +49,8 @@ var _alive_sec: Dictionary = {}
 
 
 ## Adds the lifetime points stat to [param schema]; published, never negative.
-static func declare(schema: DotStatsSchema, id: StringName = &"points", display: String = "Points") -> DotStatsDef:
-	var def := DotStatsDef.make(id, DotStatsDef.Kind.COUNTER, display)
+static func declare(schema: GSStatsSchema, id: StringName = &"points", display: String = "Points") -> GSStatsDef:
+	var def := GSStatsDef.make(id, GSStatsDef.Kind.COUNTER, display)
 	def.unit = "pts"
 	def.decimals = 0
 	def.publish = true
@@ -84,15 +84,15 @@ func to_dictionary() -> Dictionary:
 
 
 ## Loads [method configure] from a JSON file.
-func load_json(path: String) -> DotResult:
+func load_json(path: String) -> GSResult:
 	var text := FileAccess.get_file_as_string(path)
 	if text == "":
-		return DotResult.fail(DotError.CODE_IO, "No points file at %s." % path)
+		return GSResult.fail(GSError.CODE_IO, "No points file at %s." % path)
 	var parsed: Variant = JSON.parse_string(text)
 	if not parsed is Dictionary:
-		return DotResult.fail(DotError.CODE_PARSE, "%s is not a JSON object." % path)
+		return GSResult.fail(GSError.CODE_PARSE, "%s is not a JSON object." % path)
 	configure(parsed)
-	return DotResult.success()
+	return GSResult.success()
 
 
 ## Awards [param source] (times [param scale]) to [param player]; returns the points landed.

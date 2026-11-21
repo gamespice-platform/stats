@@ -9,20 +9,20 @@ State the merge rule once per stat (add, replace or keep the better) and every p
 1. Get [Godot 4.7](https://godotengine.org/download).
 2. Either use [GameSpice Bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [GameSpice Core](https://github.com/gamespice-platform/core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
 
-GameSpice Core and [GameSpice Save](https://github.com/gamespice-platform/save) (copy its `addons/dot_save/` beside `dot_core`) are the dependencies. [GameSpice Auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`DotBackboneClient` for a server, `DotAuthClient` for a player).
+GameSpice Core and [GameSpice Save](https://github.com/gamespice-platform/save) (copy its `addons/dot_save/` beside `dot_core`) are the dependencies. [GameSpice Auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`GSBackboneClient` for a server, `GSAuthClient` for a player).
 
 ## Use
 
 ```gdscript
-var schema := DotStatsSchema.new()
+var schema := GSStatsSchema.new()
 schema.define(&"kills").publish = true
-schema.define(&"top_speed", DotStatsDef.Kind.BEST, "Top speed").publish = true
-schema.define(&"level", DotStatsDef.Kind.GAUGE)          # kept, never reported
+schema.define(&"top_speed", GSStatsDef.Kind.BEST, "Top speed").publish = true
+schema.define(&"level", GSStatsDef.Kind.GAUGE)          # kept, never reported
 
-var tracker := DotStatsTracker.new()
+var tracker := GSStatsTracker.new()
 tracker.schema = schema
 tracker.report_to_backbone = true
-tracker.reporter.client = backbone      # dot-auth's DotBackboneClient
+tracker.reporter.client = backbone      # dot-auth's GSBackboneClient
 add_child(tracker)
 
 tracker.begin(player_key, display_name) # the scoped key, never the account id
@@ -36,23 +36,23 @@ Every `report_interval` seconds (default 30) and once more on shutdown, the trac
 ## Lifetime totals on the server
 
 ```gdscript
-var store := DotStatsStoreSql.new(driver)   # any dot-sql driver; or DotStatsStoreMemory
+var store := GSStatsStoreSql.new(driver)   # any dot-sql driver; or GSStatsStoreMemory
 await store.open()                          # creates or migrates its table
 tracker.store = store                       # before add_child
 ```
 
 Each reported delta is also merged into the store by the same rule, so a server with no back end still keeps every player's totals. The store answers `values_for(player)`, `top(stat, limit, offset)` (a `LOWEST` ascending, the rest descending, ties sharing a rank), `rank_of(stat, player)` and `remove_player(player)`.
 
-`DotStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [GameSpice SQL](https://github.com/gamespice-platform/sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
+`GSStatsStoreSql` speaks SQLite, PostgreSQL and MySQL/MariaDB through [GameSpice SQL](https://github.com/gamespice-platform/sql), without needing it to parse. Writes are guarded by a revision, so two servers sharing a table add up instead of overwriting. A failed write is kept for the next flush and never counts a counter twice.
 
 ## Player-reported stats
 
 A player's own client can report its own figures with the player's token and no integration credential:
 
 ```gdscript
-var mine := DotStatsClient.new()
+var mine := GSStatsClient.new()
 mine.schema = schema
-mine.client = auth_client        # dot-auth's DotAuthClient
+mine.client = auth_client        # dot-auth's GSAuthClient
 add_child(mine)
 
 mine.record(&"launches")
@@ -63,14 +63,14 @@ Both land on the same rows. Keep anything competitive on the server; this is for
 
 ## Stat catalogue file
 
-`tools/export_site_defs.gd` writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game really builds, so the site owner imports it instead of retyping it. Run it from the game project with Godot headless as a script, passing `--source` (a script path), `--method` (the function returning the `DotStatsSchema`) and `--out`.
+`tools/export_site_defs.gd` writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game really builds, so the site owner imports it instead of retyping it. Run it from the game project with Godot headless as a script, passing `--source` (a script path), `--method` (the function returning the `GSStatsSchema`) and `--out`.
 
 | Option | Does |
 | --- | --- |
 | `--check` | Writes nothing and exits 1 when the file on disk is stale. |
 | `--game <id>` | Pins the site app id. Left out by default so one file imports anywhere. |
 
-The file is `DotStatsSchema.to_site_defs()`. A scaled `difference` is skipped with a warning, because the site's diff ignores scale.
+The file is `GSStatsSchema.to_site_defs()`. A scaled `difference` is skipped with a warning, because the site's diff ignores scale.
 
 ## Testing
 

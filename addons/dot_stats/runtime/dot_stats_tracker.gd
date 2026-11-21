@@ -1,18 +1,18 @@
 @tool
-class_name DotStatsTracker
+class_name GSStatsTracker
 extends Node
 
 ## Counts statistics for the players on a server and reports them.
 ##
 ## The runtime half of GameSpice Stats: a game calls [method record] as things happen,
 ## the tracker keeps a per-player set for the session and a delta since the last
-## report, and on a timer it hands the deltas to a [DotStatsReporter] and forgets
+## report, and on a timer it hands the deltas to a [GSStatsReporter] and forgets
 ## them. A player who leaves is reported one last time and dropped.
 ##
 ## [codeblock]
-## var tracker := DotStatsTracker.new()
+## var tracker := GSStatsTracker.new()
 ## tracker.schema = preload("res://stats.tres")
-## tracker.reporter.client = backbone      # GameSpice Auth's DotBackboneClient
+## tracker.reporter.client = backbone      # GameSpice Auth's GSBackboneClient
 ## add_child(tracker)
 ##
 ## tracker.begin(player_key, display_name)  # on join; player_key is the scoped id
@@ -54,14 +54,14 @@ signal refused(player_id: StringName, stat_id: StringName, reason: String)
 signal event_seen(player_id: StringName, event_name: StringName, data: Dictionary)
 
 ## Emitted after each flush, successful or not.
-signal reported(result: DotResult)
+signal reported(result: GSResult)
 
 ## Emitted after each write to [member store], successful or not.
-signal stored(result: DotResult)
+signal stored(result: GSResult)
 
 @export_group("Stats")
 
-@export var schema: DotStatsSchema = null
+@export var schema: GSStatsSchema = null
 
 ## Read the schema from this JSON file when [member schema] is unset.
 @export_file("*.json") var schema_file: String = ""
@@ -69,7 +69,7 @@ signal stored(result: DotResult)
 @export_group("Reporting")
 
 ## Hand deltas to the reporter at all. Off, every counter still works and nothing leaves the
-## process; on, only stats marked [member DotStatsDef.publish] go.
+## process; on, only stats marked [member GSStatsDef.publish] go.
 @export var report_to_backbone: bool = false
 
 ## Seconds between flushes. 0 leaves flushing to the caller.
@@ -94,12 +94,12 @@ signal stored(result: DotResult)
 ## [method begin] whose meta has no `is_bot`. Bots never carry a linked-user claim.
 var bot_check: Callable = Callable()
 
-## Optional `func() -> float` returning seconds, for [member DotStatsDef.max_rate]; the engine clock when unset.
+## Optional `func() -> float` returning seconds, for [member GSStatsDef.max_rate]; the engine clock when unset.
 var clock: Callable = Callable()
 
-var reporter := DotStatsReporter.new()
+var reporter := GSStatsReporter.new()
 
-## Where lifetime totals are kept: a [DotStatsStore], or anything with the same
+## Where lifetime totals are kept: a [GSStatsStore], or anything with the same
 ## [code]merge(player_id, values, schema, player_name)[/code] coroutine. Null keeps none.
 ##
 ## [b]Untyped on purpose[/b], so a game can hand it its own store — one that writes through
@@ -108,7 +108,7 @@ var reporter := DotStatsReporter.new()
 ## opened first.
 var store = null
 
-## player id -> {"name": String, "session": DotStatsValues, "delta": DotStatsValues}
+## player id -> {"name": String, "session": GSStatsValues, "delta": GSStatsValues}
 var _players: Dictionary = {}
 var _timer: Timer = null
 var _started: bool = false
@@ -119,7 +119,7 @@ var _session_seq: int = 0
 ## axis -> value: breakdown values applied to every record that does not name its own.
 var _context: Dictionary = {}
 
-## player id -> {"name": String, "values": DotStatsValues}: deltas checkpointed for the store
+## player id -> {"name": String, "values": GSStatsValues}: deltas checkpointed for the store
 ## and not yet written to it. The store's half of what the reporter's queue is.
 var _store_pending: Dictionary = {}
 var _store_writing: bool = false
@@ -131,22 +131,22 @@ func _ready() -> void:
 		return
 	var res := start()
 	if not res.ok:
-		DotLog.result(CHANNEL, "stats tracker", res)
+		GSLog.result(CHANNEL, "stats tracker", res)
 
 
-func start() -> DotResult:
+func start() -> GSResult:
 	if _started:
-		return DotResult.success(self)
+		return GSResult.success(self)
 
 	if schema == null and schema_file != "":
-		var loaded := DotStatsSchema.load_json(schema_file)
+		var loaded := GSStatsSchema.load_json(schema_file)
 		if not loaded.ok:
 			return loaded
 		schema = loaded.value
 
 	if schema == null:
-		return DotResult.fail(
-			DotError.CODE_STATE, "The tracker has no schema.", "assign schema or schema_file"
+		return GSResult.fail(
+			GSError.CODE_STATE, "The tracker has no schema.", "assign schema or schema_file"
 		)
 
 	var valid := schema.validate()
@@ -167,7 +167,7 @@ func start() -> DotResult:
 
 	_started = true
 
-	DotLog.info(
+	GSLog.info(
 		CHANNEL,
 		"stats tracker ready",
 		{
@@ -178,7 +178,7 @@ func start() -> DotResult:
 		}
 	)
 
-	return DotResult.success(self)
+	return GSResult.success(self)
 
 
 func _exit_tree() -> void:
@@ -213,8 +213,8 @@ func begin(player_id: StringName, player_name: String = "", meta: Dictionary = {
 	_players[player_id] = {
 		"is_bot": bot,
 		"name": player_name,
-		"session": DotStatsValues.new(),
-		"delta": DotStatsValues.new(),
+		"session": GSStatsValues.new(),
+		"delta": GSStatsValues.new(),
 		"rate": {},
 		"session_id": sid,
 		"joined": Time.get_unix_time_from_system(),
@@ -228,9 +228,9 @@ func begin(player_id: StringName, player_name: String = "", meta: Dictionary = {
 
 ## Stops counting for a player: their outstanding delta is queued and they are
 ## forgotten. Returns the session set, for a "match summary".
-func end(player_id: StringName) -> DotStatsValues:
+func end(player_id: StringName) -> GSStatsValues:
 	if not _players.has(player_id):
-		return DotStatsValues.new()
+		return GSStatsValues.new()
 	var row: Dictionary = _players[player_id]
 	_checkpoint(player_id, row)
 	_players.erase(player_id)
@@ -284,9 +284,9 @@ func players() -> Array[StringName]:
 
 
 ## The player's session values so far. Empty for an unknown player.
-func session_values(player_id: StringName) -> DotStatsValues:
+func session_values(player_id: StringName) -> GSStatsValues:
 	if not _players.has(player_id):
-		return DotStatsValues.new()
+		return GSStatsValues.new()
 	return (_players[player_id] as Dictionary)["session"]
 
 
@@ -334,7 +334,7 @@ func context() -> Dictionary:
 ##
 ## [param dims] names breakdown values (`{weapon = &"rifle"}`); axes the stat does not break
 ## down by are ignored and missing ones come from [method set_context].
-func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims: Dictionary = {}) -> DotResult:
+func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims: Dictionary = {}) -> GSResult:
 	if not _started:
 		var s := start()
 		if not s.ok:
@@ -343,32 +343,32 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims
 	var def := schema.find(stat_id)
 	if def == null:
 		refused.emit(player_id, stat_id, "undeclared")
-		return DotResult.fail(
-			DotError.CODE_INVALID, "No such stat is declared.", String(stat_id)
+		return GSResult.fail(
+			GSError.CODE_INVALID, "No such stat is declared.", String(stat_id)
 		)
 	if def.derived != null:
 		refused.emit(player_id, stat_id, "derived")
-		return DotResult.fail(
-			DotError.CODE_INVALID, "A derived stat is computed, not recorded.", String(stat_id)
+		return GSResult.fail(
+			GSError.CODE_INVALID, "A derived stat is computed, not recorded.", String(stat_id)
 		)
 
 	if not _players.has(player_id):
 		begin(player_id)
 
 	var row: Dictionary = _players[player_id]
-	var session: DotStatsValues = row["session"]
-	var delta: DotStatsValues = row["delta"]
+	var session: GSStatsValues = row["session"]
+	var delta: GSStatsValues = row["delta"]
 
 	var why := ""
 	if is_finite(value):
 		why = def.misfit(session.get_value(stat_id), value, session.has(stat_id))
 	if why != "":
 		refused.emit(player_id, stat_id, why)
-		return DotResult.fail(DotError.CODE_INVALID, "A reading does not fit its stat.", "%s: %s" % [stat_id, why])
+		return GSResult.fail(GSError.CODE_INVALID, "A reading does not fit its stat.", "%s: %s" % [stat_id, why])
 
 	if def.max_rate > 0.0 and not _within_rate(row, def, value):
 		refused.emit(player_id, stat_id, "over_rate")
-		return DotResult.fail(DotError.CODE_QUOTA, "A reading grows faster than max_rate allows.", String(stat_id))
+		return GSResult.fail(GSError.CODE_QUOTA, "A reading grows faster than max_rate allows.", String(stat_id))
 
 	var cell_dims := _cell_dims(def, dims)
 	var applied := session.record(def, value, cell_dims)
@@ -403,7 +403,7 @@ func event(player_id: StringName, event_name: StringName, data: Dictionary = {})
 
 
 ## A token bucket per player and stat: max_rate per minute, full at the start, refilled by time.
-func _within_rate(row: Dictionary, def: DotStatsDef, value: float) -> bool:
+func _within_rate(row: Dictionary, def: GSStatsDef, value: float) -> bool:
 	if value <= 0.0:
 		return true
 	var now := float(clock.call()) if clock.is_valid() else Time.get_ticks_msec() / 1000.0
@@ -427,7 +427,7 @@ func _log_event(row: Dictionary, player_id: StringName, stat_id: StringName, val
 	var clean := {}
 	for k in all:
 		var v := str(all[k])
-		if v != "" and DotStatsDef.is_valid_id(str(k)) and DotStatsDef.is_valid_id(v):
+		if v != "" and GSStatsDef.is_valid_id(str(k)) and GSStatsDef.is_valid_id(v):
 			clean[str(k)] = v
 	_events.append({
 		"session": row["session_id"], "player": String(player_id), "stat": String(stat_id),
@@ -438,14 +438,14 @@ func _log_event(row: Dictionary, player_id: StringName, stat_id: StringName, val
 
 
 ## The cells a reading also lands in: one per breakdown axis that has a usable value.
-func _cell_dims(def: DotStatsDef, dims: Dictionary) -> Dictionary:
+func _cell_dims(def: GSStatsDef, dims: Dictionary) -> Dictionary:
 	var out := {}
 	for axis in def.breakdowns:
 		var v := str(dims.get(axis, dims.get(StringName(axis), _context.get(axis, ""))))
 		if v == "":
 			continue
-		if not DotStatsDef.is_valid_id(v):
-			DotLog.debug(CHANNEL, "breakdown value skipped", {"axis": axis, "value": v.substr(0, 24)})
+		if not GSStatsDef.is_valid_id(v):
+			GSLog.debug(CHANNEL, "breakdown value skipped", {"axis": axis, "value": v.substr(0, 24)})
 			continue
 		out[axis] = v
 	return out
@@ -461,10 +461,10 @@ func _cell_dims(def: DotStatsDef, dims: Dictionary) -> Dictionary:
 ## With a [member store], the same deltas are written to it first. The result is the
 ## reporter's when reporting is on and the store's when only the store is; the store's is
 ## also emitted as [signal stored].
-func flush() -> DotResult:
+func flush() -> GSResult:
 	if not report_to_backbone:
 		if store == null:
-			return DotResult.success(0)
+			return GSResult.success(0)
 		_checkpoint_all()
 		return await flush_store()
 
@@ -475,7 +475,7 @@ func flush() -> DotResult:
 		else:
 			# Filing still works against stats the site already knows; a define
 			# that failed is retried on the next flush, and said so once.
-			DotLog.warn(
+			GSLog.warn(
 				CHANNEL,
 				"could not declare the stats schema; will retry",
 				{"why": defined.error.message}
@@ -496,7 +496,7 @@ func _checkpoint_all() -> void:
 
 ## Queues a player's delta and clears it. Does nothing for an empty delta.
 func _checkpoint(player_id: StringName, row: Dictionary) -> void:
-	var delta: DotStatsValues = row["delta"]
+	var delta: GSStatsValues = row["delta"]
 	if delta.is_empty():
 		return
 	if store != null:
@@ -511,7 +511,7 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 	var meta := {"session": row["session_id"], "bot": row["is_bot"], "user": row["tmc_user"], "map": row["map"]}
 	var queued := reporter.queue(player_id, str(row["name"]), delta.to_dictionary(), meta, delta.cells)
 	if not queued.ok:
-		DotLog.warn(
+		GSLog.warn(
 			CHANNEL,
 			"a player's stats could not be queued",
 			{"player": String(player_id).substr(0, 12), "why": queued.error.message}
@@ -532,27 +532,27 @@ func _checkpoint(player_id: StringName, row: Dictionary) -> void:
 ## reading; folding the newer one into the older keeps the order the readings happened in,
 ## for every kind. One write runs at a time; a second call while one is in flight returns
 ## and leaves its players for the next.
-func flush_store() -> DotResult:
+func flush_store() -> GSResult:
 	if store == null or _store_pending.is_empty() or _store_writing:
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	_store_writing = true
 	var written := 0
-	var failure: DotResult = null
+	var failure: GSResult = null
 
 	for player_id in _store_pending.keys():
 		var row: Dictionary = _store_pending[player_id]
 		_store_pending.erase(player_id)
 
-		var res: DotResult = await store.merge(player_id, row["values"], schema, str(row["name"]))
+		var res: GSResult = await store.merge(player_id, row["values"], schema, str(row["name"]))
 		if res != null and res.ok:
 			written += 1
 			continue
 
-		failure = res if res != null else DotResult.fail(DotError.CODE_INTERNAL, "A stats store returned nothing.")
-		var unapplied: DotStatsValues = row["values"]
+		failure = res if res != null else GSResult.fail(GSError.CODE_INTERNAL, "A stats store returned nothing.")
+		var unapplied: GSStatsValues = row["values"]
 		if failure.error != null and failure.error.context.get("unapplied") is Dictionary:
-			unapplied = DotStatsValues.from_dictionary(failure.error.context["unapplied"])
+			unapplied = GSStatsValues.from_dictionary(failure.error.context["unapplied"])
 		_restore_for_store(player_id, str(row["name"]), unapplied)
 		# A store that failed one player is very likely down for the next; the rest wait
 		# for the next flush rather than each failing in turn.
@@ -560,19 +560,19 @@ func flush_store() -> DotResult:
 
 	_store_writing = false
 
-	var result := failure if failure != null else DotResult.success(written)
+	var result := failure if failure != null else GSResult.success(written)
 	if failure != null:
 		# WARN on the first failure and DEBUG while it lasts: nothing is lost yet, and a
 		# store that is down for an hour would otherwise bury the line that said so.
 		var fields := {"why": failure.error.message if failure.error != null else "", "players": _store_pending.size()}
 		if _store_failing:
-			DotLog.debug(CHANNEL, "lifetime stats still not saving", fields)
+			GSLog.debug(CHANNEL, "lifetime stats still not saving", fields)
 		else:
-			DotLog.warn(CHANNEL, "lifetime stats are not saving; they will be retried", fields)
+			GSLog.warn(CHANNEL, "lifetime stats are not saving; they will be retried", fields)
 		_store_failing = true
 	elif _store_failing and written > 0:
 		_store_failing = false
-		DotLog.info(CHANNEL, "lifetime stats are saving again", {"players": written})
+		GSLog.info(CHANNEL, "lifetime stats are saving again", {"players": written})
 
 	stored.emit(result)
 	return result
@@ -583,17 +583,17 @@ func store_pending() -> int:
 	return _store_pending.size()
 
 
-func _pend_for_store(player_id: StringName, player_name: String, delta: DotStatsValues) -> void:
+func _pend_for_store(player_id: StringName, player_name: String, delta: GSStatsValues) -> void:
 	if not _store_pending.has(player_id):
-		_store_pending[player_id] = {"name": player_name, "values": DotStatsValues.new()}
+		_store_pending[player_id] = {"name": player_name, "values": GSStatsValues.new()}
 	var row: Dictionary = _store_pending[player_id]
 	if player_name != "":
 		row["name"] = player_name
-	(row["values"] as DotStatsValues).merge_from(delta, schema)
+	(row["values"] as GSStatsValues).merge_from(delta, schema)
 
 
 ## Puts back a write that failed, with anything checkpointed since folded in ON TOP of it.
-func _restore_for_store(player_id: StringName, player_name: String, older: DotStatsValues) -> void:
+func _restore_for_store(player_id: StringName, player_name: String, older: GSStatsValues) -> void:
 	var restored := older.duplicate_values()
 	var newer: Variant = _store_pending.get(player_id)
 	if newer is Dictionary:

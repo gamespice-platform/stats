@@ -14,7 +14,7 @@ func _init() -> void:
 		printerr("export_site_defs: %s has no static %s()" % [source, method])
 		quit(2)
 		return
-	var schema := script.call(method) as DotStatsSchema
+	var schema := script.call(method) as GSStatsSchema
 	var valid := schema.validate()
 	if not valid.ok:
 		printerr("export_site_defs: schema invalid: %s" % valid.message)

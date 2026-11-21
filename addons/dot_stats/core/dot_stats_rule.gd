@@ -1,8 +1,8 @@
 @tool
-class_name DotStatsRule
+class_name GSStatsRule
 extends Resource
 
-## Maps a game event to a reading of one stat, for [method DotStatsTracker.event].
+## Maps a game event to a reading of one stat, for [method GSStatsTracker.event].
 
 ## Event name this rule listens for.
 @export var on: StringName = &""
@@ -20,8 +20,8 @@ var callback: Callable = Callable()
 
 
 ## A rule whose reading is decided by code.
-static func custom(event_name: StringName, stat_id: StringName, fn: Callable) -> DotStatsRule:
-	var r := DotStatsRule.new()
+static func custom(event_name: StringName, stat_id: StringName, fn: Callable) -> GSStatsRule:
+	var r := GSStatsRule.new()
 	r.on = event_name
 	r.stat = stat_id
 	r.callback = fn
@@ -67,16 +67,16 @@ func to_dictionary() -> Dictionary:
 	return out
 
 
-static func from_dictionary(data: Dictionary) -> DotResult:
-	var r := DotStatsRule.new()
+static func from_dictionary(data: Dictionary) -> GSResult:
+	var r := GSStatsRule.new()
 	r.on = StringName(str(data.get("on", "")))
 	r.stat = StringName(str(data.get("stat", "")))
 	if r.on == &"" or r.stat == &"":
-		return DotResult.fail(DotError.CODE_INVALID, "A rule names its event and its stat.")
+		return GSResult.fail(GSError.CODE_INVALID, "A rule names its event and its stat.")
 	for key in ["when", "unless"]:
 		var raw: Variant = data.get(key, [])
 		if not (raw is Array):
-			return DotResult.fail(DotError.CODE_INVALID, "A rule's '%s' is a list of tags." % key, String(r.stat))
+			return GSResult.fail(GSError.CODE_INVALID, "A rule's '%s' is a list of tags." % key, String(r.stat))
 		var tags := PackedStringArray()
 		for t in (raw as Array):
 			tags.append(str(t))
@@ -90,5 +90,5 @@ static func from_dictionary(data: Dictionary) -> DotResult:
 	elif v is float or v is int:
 		r.amount = float(v)
 	else:
-		return DotResult.fail(DotError.CODE_INVALID, "A rule's value is a number or a field name.", String(r.stat))
-	return DotResult.success(r)
+		return GSResult.fail(GSError.CODE_INVALID, "A rule's value is a number or a field name.", String(r.stat))
+	return GSResult.success(r)

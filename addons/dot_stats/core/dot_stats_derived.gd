@@ -1,5 +1,5 @@
 @tool
-class_name DotStatsDerived
+class_name GSStatsDerived
 extends Resource
 
 ## A figure computed from two stored stats on read, never stored or merged.
@@ -27,7 +27,7 @@ func op_name() -> String:
 ## The value over [param values], or NAN when an input is missing or the divisor is zero.
 ##
 ## [param cell] is a breakdown cell key such as `weapon:rifle`, or "" for the total.
-## [param values] is a [DotStatsValues], typed by its base: it names the schema, which names this
+## [param values] is a [GSStatsValues], typed by its base: it names the schema, which names this
 ## class, and a script loop stays in memory for good (Godot 4.7).
 func compute(values: RefCounted, cell: String = "") -> float:
 	if not values.has_cell(num, cell) or not values.has_cell(den, cell):
@@ -50,17 +50,17 @@ func to_dictionary() -> Dictionary:
 	return {"op": op_name().to_lower(), "num": String(num), "den": String(den), "scale": scale}
 
 
-static func from_dictionary(data: Dictionary) -> DotResult:
-	var d := DotStatsDerived.new()
+static func from_dictionary(data: Dictionary) -> GSResult:
+	var d := GSStatsDerived.new()
 	var o := op_from_name(str(data.get("op", "")))
 	if o < 0:
-		return DotResult.fail(DotError.CODE_INVALID, "Unknown derived op.", str(data.get("op")))
+		return GSResult.fail(GSError.CODE_INVALID, "Unknown derived op.", str(data.get("op")))
 	d.op = o as Op
 	d.num = StringName(str(data.get("num", "")))
 	d.den = StringName(str(data.get("den", "")))
 	d.scale = float(data.get("scale", 1.0))
 	if not is_finite(d.scale):
-		return DotResult.fail(DotError.CODE_INVALID, "A derived scale must be finite.")
+		return GSResult.fail(GSError.CODE_INVALID, "A derived scale must be finite.")
 	if d.num == &"" or d.den == &"":
-		return DotResult.fail(DotError.CODE_INVALID, "A derived stat names its num and den.")
-	return DotResult.success(d)
+		return GSResult.fail(GSError.CODE_INVALID, "A derived stat names its num and den.")
+	return GSResult.success(d)

@@ -22,7 +22,7 @@ const SECTIONS := 21
 
 
 func _ready() -> void:
-	DotLog.set_level(DotLog.Level.WARN)
+	GSLog.set_level(GSLog.Level.WARN)
 	await _run()
 
 
@@ -60,10 +60,10 @@ func _run() -> void:
 func _test_kinds() -> void:
 	_section("kinds")
 
-	var counter := DotStatsDef.make(&"kills", DotStatsDef.Kind.COUNTER)
-	var gauge := DotStatsDef.make(&"level", DotStatsDef.Kind.GAUGE)
-	var best := DotStatsDef.make(&"top_speed", DotStatsDef.Kind.BEST)
-	var lowest := DotStatsDef.make(&"best_lap", DotStatsDef.Kind.LOWEST)
+	var counter := GSStatsDef.make(&"kills", GSStatsDef.Kind.COUNTER)
+	var gauge := GSStatsDef.make(&"level", GSStatsDef.Kind.GAUGE)
+	var best := GSStatsDef.make(&"top_speed", GSStatsDef.Kind.BEST)
+	var lowest := GSStatsDef.make(&"best_lap", GSStatsDef.Kind.LOWEST)
 
 	_check("a counter adds", counter.merge(3.0, 4.0) == 7.0)
 	_check("a gauge takes the newest", gauge.merge(3.0, 4.0) == 4.0 and gauge.merge(4.0, 3.0) == 3.0)
@@ -75,8 +75,8 @@ func _test_kinds() -> void:
 	# be compared against an implicit zero it can never beat.
 	_check("a first reading stands", lowest.merge(0.0, 42.0, false) == 42.0 and counter.merge(0.0, 5.0, false) == 5.0)
 
-	_check("kind names round-trip", DotStatsDef.kind_from_name("best") == DotStatsDef.Kind.BEST)
-	_check("an unknown kind is refused", DotStatsDef.kind_from_name("median") < 0)
+	_check("kind names round-trip", GSStatsDef.kind_from_name("best") == GSStatsDef.Kind.BEST)
+	_check("an unknown kind is refused", GSStatsDef.kind_from_name("median") < 0)
 
 	best.unit = "m/s"
 	best.decimals = 1
@@ -89,10 +89,10 @@ func _test_kinds() -> void:
 func _test_schema() -> void:
 	_section("schema")
 
-	var schema := DotStatsSchema.new()
+	var schema := GSStatsSchema.new()
 	schema.define(&"kills")
 	schema.define(&"deaths")
-	schema.define(&"top_speed", DotStatsDef.Kind.BEST, "Top speed").publish = true
+	schema.define(&"top_speed", GSStatsDef.Kind.BEST, "Top speed").publish = true
 
 	_check("a schema validates", schema.validate().ok)
 	_check("a stat is found by id", schema.find(&"deaths") != null)
@@ -108,36 +108,36 @@ func _test_schema() -> void:
 	schema.stats.pop_back()
 
 	# Round trip through the wire shape, which is also the JSON file shape.
-	var parsed := DotStatsSchema.from_dictionary(schema.to_dictionary())
-	_check("a schema round-trips", parsed.ok and (parsed.value as DotStatsSchema).size() == 3)
+	var parsed := GSStatsSchema.from_dictionary(schema.to_dictionary())
+	_check("a schema round-trips", parsed.ok and (parsed.value as GSStatsSchema).size() == 3)
 	if parsed.ok:
-		var back := parsed.value as DotStatsSchema
-		_check("with kinds intact", back.find(&"top_speed").kind == DotStatsDef.Kind.BEST)
+		var back := parsed.value as GSStatsSchema
+		_check("with kinds intact", back.find(&"top_speed").kind == GSStatsDef.Kind.BEST)
 		_check("and publish flags intact", back.find(&"top_speed").publish and not back.find(&"kills").publish)
 
-	var bad := DotStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "median"}]})
+	var bad := GSStatsSchema.from_dictionary({"stats": [{"id": "x", "kind": "median"}]})
 	_check("an unknown kind in a file is refused", not bad.ok)
 
-	var site_schema := DotStatsSchema.new()
-	var late := site_schema.define(&"late", DotStatsDef.Kind.COUNTER, "Late")
+	var site_schema := GSStatsSchema.new()
+	var late := site_schema.define(&"late", GSStatsDef.Kind.COUNTER, "Late")
 	late.publish = true
 	late.order = 2
-	var early := site_schema.define(&"early", DotStatsDef.Kind.BEST, "Early")
+	var early := site_schema.define(&"early", GSStatsDef.Kind.BEST, "Early")
 	early.publish = true
 	early.order = 1
 	site_schema.define(&"private_counter").publish = false
-	var ratio := site_schema.define(&"ratio", DotStatsDef.Kind.COUNTER, "Ratio")
+	var ratio := site_schema.define(&"ratio", GSStatsDef.Kind.COUNTER, "Ratio")
 	ratio.publish = true
 	ratio.order = 3
-	ratio.derived = DotStatsDerived.new()
-	ratio.derived.op = DotStatsDerived.Op.DIFFERENCE
+	ratio.derived = GSStatsDerived.new()
+	ratio.derived.op = GSStatsDerived.Op.DIFFERENCE
 	ratio.derived.num = &"late"
 	ratio.derived.den = &"early"
-	var pm := site_schema.define(&"per_min", DotStatsDef.Kind.COUNTER, "Per minute")
+	var pm := site_schema.define(&"per_min", GSStatsDef.Kind.COUNTER, "Per minute")
 	pm.publish = true
 	pm.order = 4
-	pm.derived = DotStatsDerived.new()
-	pm.derived.op = DotStatsDerived.Op.PER_MINUTE
+	pm.derived = GSStatsDerived.new()
+	pm.derived.op = GSStatsDerived.Op.PER_MINUTE
 	pm.derived.num = &"late"
 	pm.derived.den = &"early"
 	early.format = "number"
@@ -153,11 +153,11 @@ func _test_schema() -> void:
 	_check("a scaled difference is left out of the site defs", site_schema.to_site_defs()["stats"].size() == 3)
 	_check("a best stat keeps its kind in capitals", rows[0]["kind"] == "BEST")
 
-	var many := DotStatsSchema.new()
-	for i in range(DotStatsSchema.MAX_STATS + 1):
+	var many := GSStatsSchema.new()
+	for i in range(GSStatsSchema.MAX_STATS + 1):
 		many.define(StringName("s%d" % i))
 	var capped := many.validate()
-	_check("the cap refuses one too many", not capped.ok and capped.code() == DotError.CODE_QUOTA)
+	_check("the cap refuses one too many", not capped.ok and capped.code() == GSError.CODE_QUOTA)
 
 	_line("")
 	_done()
@@ -166,11 +166,11 @@ func _test_schema() -> void:
 func _test_values() -> void:
 	_section("values")
 
-	var schema := DotStatsSchema.new()
+	var schema := GSStatsSchema.new()
 	var kills := schema.define(&"kills")
-	var speed := schema.define(&"top_speed", DotStatsDef.Kind.BEST)
+	var speed := schema.define(&"top_speed", GSStatsDef.Kind.BEST)
 
-	var v := DotStatsValues.new()
+	var v := GSStatsValues.new()
 	v.record(kills, 1.0)
 	v.record(kills, 1.0)
 	v.record(speed, 30.0)
@@ -182,7 +182,7 @@ func _test_values() -> void:
 	var inf := v.record(speed, INF)
 	_check("and so is an infinite one", not inf.ok and v.get_value(&"top_speed") == 30.0)
 
-	var other := DotStatsValues.new()
+	var other := GSStatsValues.new()
 	other.record(kills, 3.0)
 	other.record(speed, 28.0)
 	other.values[&"unknown"] = 9.0
@@ -190,7 +190,7 @@ func _test_values() -> void:
 	_check("a merge is a walk by the same rules", v.get_value(&"kills") == 5.0 and v.get_value(&"top_speed") == 30.0)
 	_check("and skips what the schema does not know", not v.has(&"unknown"))
 
-	var read := DotStatsValues.from_dictionary({"kills": 4, "top_speed": 12.5, "name": "banana"})
+	var read := GSStatsValues.from_dictionary({"kills": 4, "top_speed": 12.5, "name": "banana"})
 	_check("a dictionary reads numerics only", read.size() == 2 and read.get_value(&"kills") == 4.0)
 
 	_line("")
@@ -200,7 +200,7 @@ func _test_values() -> void:
 func _test_tracker() -> void:
 	_section("tracker")
 
-	var tracker := DotStatsTracker.new()
+	var tracker := GSStatsTracker.new()
 	tracker.name = "Tracker"
 	tracker.schema = _make_schema()
 	tracker.report_to_backbone = false
@@ -262,7 +262,7 @@ func _test_reporter_coalesces() -> void:
 	_section("reporter coalesces")
 
 	var backbone := FakeBackbone.new()
-	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	var reporter := GSStatsReporter.with_client(backbone, _make_schema())
 
 	reporter.queue(&"p1", "Ada", {"kills": 3, "top_speed": 30.0, "level": 3})
 	reporter.queue(&"p1", "Ada", {"kills": 4, "top_speed": 20.0, "level": 5})
@@ -278,7 +278,7 @@ func _test_reporter_coalesces() -> void:
 	var players: Array = body["players"]
 	var ada: Dictionary = players[0]
 	var stats: Dictionary = ada["stats"]
-	_check("the batch goes to stats/submit", str(backbone.calls[0]["path"]) == DotStatsReporter.SUBMIT_PATH)
+	_check("the batch goes to stats/submit", str(backbone.calls[0]["path"]) == GSStatsReporter.SUBMIT_PATH)
 	_check(
 		"coalesced by kind: counter summed, best kept, gauge newest",
 		float(stats["kills"]) == 7.0 and float(stats["top_speed"]) == 30.0 and float(stats["level"]) == 5.0
@@ -297,7 +297,7 @@ func _test_reporter_keeps_its_queue() -> void:
 	_section("reporter keeps its queue")
 
 	var backbone := FakeBackbone.new()
-	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	var reporter := GSStatsReporter.with_client(backbone, _make_schema())
 
 	for i in range(5):
 		reporter.queue(StringName("p%d" % i), "P", {"kills": 1})
@@ -320,11 +320,11 @@ func _test_reporter_keeps_its_queue() -> void:
 	var forbidden := await reporter.flush()
 	_check("a 403 keeps the queue too", not forbidden.ok and reporter.queued() == 1)
 
-	var without := DotStatsReporter.new()
+	var without := GSStatsReporter.new()
 	without.schema = _make_schema()
 	without.queue(&"p1", "P", {"kills": 1})
 	var none := await without.flush()
-	_check("no client is a state error, not a crash", not none.ok and none.code() == DotError.CODE_STATE)
+	_check("no client is a state error, not a crash", not none.ok and none.code() == GSError.CODE_STATE)
 
 	_line("")
 	_done()
@@ -333,7 +333,7 @@ func _test_reporter_keeps_its_queue() -> void:
 func _test_reporter_bounds_its_queue() -> void:
 	_section("reporter bounds its queue")
 
-	var reporter := DotStatsReporter.with_client(FakeBackbone.new(), _make_schema())
+	var reporter := GSStatsReporter.with_client(FakeBackbone.new(), _make_schema())
 	reporter.player_limit = 10
 
 	for i in range(40):
@@ -356,27 +356,27 @@ func _test_reporter_bounds_its_queue() -> void:
 func _test_reporter_refuses_account_ids() -> void:
 	_section("reporter refuses account ids")
 
-	var reporter := DotStatsReporter.with_client(FakeBackbone.new(), _make_schema())
+	var reporter := GSStatsReporter.with_client(FakeBackbone.new(), _make_schema())
 
 	var account := reporter.queue(&"backbone:clx8f2k0000", "Ada", {"kills": 1})
 	_check(
 		"a dot-auth account uid is refused as a player",
-		not account.ok and account.code() == DotError.CODE_INVALID and reporter.queued() == 0
+		not account.ok and account.code() == GSError.CODE_INVALID and reporter.queued() == 0
 	)
 
 	var scoped := reporter.queue(&"Qx3v_9LkP2mR8sT1uVwXyZ", "Ada", {"kills": 1})
 	_check("a scoped key is accepted", scoped.ok and reporter.queued() == 1)
 
-	_check("an empty id is not a player", not DotStatsReporter.is_player_id(""))
+	_check("an empty id is not a player", not GSStatsReporter.is_player_id(""))
 
-	var lazy := DotStatsReporter.new()
+	var lazy := GSStatsReporter.new()
 	lazy.schema = _make_schema()
 	lazy.client_service = &"stats_selftest_client"
 	_check("no client and none registered is unavailable", not lazy.is_available())
 	var fake := FakeBackbone.new()
-	DotRegistry.register(&"stats_selftest_client", fake)
+	GSRegistry.register(&"stats_selftest_client", fake)
 	_check("a client is found by service name", lazy.is_available() and lazy.client == fake)
-	DotRegistry.unregister_instance(&"stats_selftest_client", fake)
+	GSRegistry.unregister_instance(&"stats_selftest_client", fake)
 
 	_line("")
 	_done()
@@ -386,14 +386,14 @@ func _test_reporter_define() -> void:
 	_section("reporter declares")
 
 	var backbone := FakeBackbone.new()
-	var reporter := DotStatsReporter.with_client(backbone, _make_schema())
+	var reporter := GSStatsReporter.with_client(backbone, _make_schema())
 
 	var defined := await reporter.define()
 	_check("define() posts the published stats", defined.ok, defined)
 	if not backbone.calls.is_empty():
 		var body: Dictionary = backbone.calls[0]["body"]
 		var list: Array = body["stats"]
-		_check("to stats/define", str(backbone.calls[0]["path"]) == DotStatsReporter.DEFINE_PATH)
+		_check("to stats/define", str(backbone.calls[0]["path"]) == GSStatsReporter.DEFINE_PATH)
 		_check("only the published ones", list.size() == 4)
 		var first: Dictionary = list[0]
 		# StatsDefineInput's shape: `key`, never `id` — the site's comment on the
@@ -401,10 +401,10 @@ func _test_reporter_define() -> void:
 		_check("with the wire shape", first.has("key") and not first.has("id") and first.has("kind") and first.has("unit") and first.has("decimals"))
 		_check("and the kind by name", first["kind"] is String)
 
-	var quiet := DotStatsReporter.with_client(backbone, DotStatsSchema.new())
+	var quiet := GSStatsReporter.with_client(backbone, GSStatsSchema.new())
 	quiet.schema.define(&"private")
 	var nothing := await quiet.define()
-	_check("nothing published is nothing to declare", not nothing.ok and nothing.code() == DotError.CODE_STATE)
+	_check("nothing published is nothing to declare", not nothing.ok and nothing.code() == GSError.CODE_STATE)
 
 	_line("")
 	_done()
@@ -414,7 +414,7 @@ func _test_tracker_reports_on_leave() -> void:
 	_section("tracker reports")
 
 	var backbone := FakeBackbone.new()
-	var tracker := DotStatsTracker.new()
+	var tracker := GSStatsTracker.new()
 	tracker.name = "ReportingTracker"
 	tracker.schema = _make_schema()
 	tracker.report_to_backbone = true
@@ -430,7 +430,7 @@ func _test_tracker_reports_on_leave() -> void:
 	var first := await tracker.flush()
 	_check("a flush declares first, then files", first.ok and backbone.calls.size() == 2, first)
 	if backbone.calls.size() == 2:
-		_check("define before submit", str(backbone.calls[0]["path"]) == DotStatsReporter.DEFINE_PATH)
+		_check("define before submit", str(backbone.calls[0]["path"]) == GSStatsReporter.DEFINE_PATH)
 		var stats: Dictionary = (backbone.calls[1]["body"]["players"] as Array)[0]["stats"]
 		_check("the delta is what was counted", float(stats["kills"]) == 2.0)
 		_check("and the unpublished stat stayed home", not stats.has("secret"))
@@ -463,14 +463,14 @@ func _test_tracker_reports_on_leave() -> void:
 func _test_memory_store() -> void:
 	_section("lifetime store, in memory")
 
-	var store := DotStatsStoreMemory.new()
-	var no_rules: DotResult = await store.merge(&"p1", {"kills": 1})
-	_check("a merge with no schema to merge by is refused", not no_rules.ok and no_rules.code() == DotError.CODE_STATE)
+	var store := GSStatsStoreMemory.new()
+	var no_rules: GSResult = await store.merge(&"p1", {"kills": 1})
+	_check("a merge with no schema to merge by is refused", not no_rules.ok and no_rules.code() == GSError.CODE_STATE)
 
 	var schema := _store_schema()
 	await store.merge(&"p1", {"kills": 3, "level": 2, "top_speed": 30.0, "best_lap": 12.0}, schema, "Ada")
-	var totals: DotResult = await store.merge(&"p1", {"kills": 4, "level": 1, "top_speed": 20.0, "best_lap": 15.0}, schema)
-	var v: DotStatsValues = totals.value if totals.ok else DotStatsValues.new()
+	var totals: GSResult = await store.merge(&"p1", {"kills": 4, "level": 1, "top_speed": 20.0, "best_lap": 15.0}, schema)
+	var v: GSStatsValues = totals.value if totals.ok else GSStatsValues.new()
 	_check(
 		"each kind merges by its own rule: 3+4 kills, level replaced, best kept, lowest kept",
 		v.get_value(&"kills") == 7.0 and v.get_value(&"level") == 1.0
@@ -481,21 +481,21 @@ func _test_memory_store() -> void:
 		(await store.values_for(&"p1")).value.get_value(&"best_lap") == 12.0
 	)
 
-	var odd: DotResult = await store.merge(&"p2", {"kills": NAN, "assists": 4, "name": "x", "top_speed": 41.0}, schema, "Bo")
+	var odd: GSResult = await store.merge(&"p2", {"kills": NAN, "assists": 4, "name": "x", "top_speed": 41.0}, schema, "Bo")
 	_check(
 		"a NaN, an undeclared stat and a non-number are left out; the rest lands",
-		odd.ok and (odd.value as DotStatsValues).size() == 1 and (odd.value as DotStatsValues).get_value(&"top_speed") == 41.0
+		odd.ok and (odd.value as GSStatsValues).size() == 1 and (odd.value as GSStatsValues).get_value(&"top_speed") == 41.0
 	)
 
-	var nobody: DotResult = await store.values_for(&"nobody")
-	_check("a player with nothing is an empty set, not null", nobody.ok and (nobody.value as DotStatsValues).is_empty())
+	var nobody: GSResult = await store.values_for(&"nobody")
+	_check("a player with nothing is an empty set, not null", nobody.ok and (nobody.value as GSStatsValues).is_empty())
 
 	await store.merge(&"p3", {"kills": 7, "best_lap": 10.0}, schema, "Cy")
 	await store.merge(&"p4", {"kills": 1, "best_lap": 12.0}, schema, "Di")
-	var kills: DotResult = await store.top(&"kills")
+	var kills: GSResult = await store.top(&"kills")
 	var shape: Array = (kills.value as Array).map(func(r): return "%s=%d" % [r["player"], r["rank"]]) if kills.ok else []
 	_check("a counter ranks highest first, a tie sharing its rank", str(shape) == str(["p1=1", "p3=1", "p4=3"]), kills)
-	var laps: DotResult = await store.top(&"best_lap", 2)
+	var laps: GSResult = await store.top(&"best_lap", 2)
 	var lap_shape: Array = (laps.value as Array).map(func(r): return "%s=%d" % [r["player"], r["rank"]]) if laps.ok else []
 	_check("a LOWEST ranks lowest first, and a limit is a limit", str(lap_shape) == str(["p3=1", "p1=2"]), laps)
 	_check(
@@ -503,15 +503,15 @@ func _test_memory_store() -> void:
 		laps.ok and (laps.value as Array)[0]["name"] == "Cy"
 	)
 
-	var unknown: DotResult = await store.top(&"assists")
-	_check("a ranking of an undeclared stat is refused, not empty", not unknown.ok and unknown.code() == DotError.CODE_INVALID)
+	var unknown: GSResult = await store.top(&"assists")
+	_check("a ranking of an undeclared stat is refused, not empty", not unknown.ok and unknown.code() == GSError.CODE_INVALID)
 
 	_check(
 		"a rank counts who is strictly ahead; absent is 0",
 		(await store.rank_of(&"best_lap", &"p4")).value == 2 and (await store.rank_of(&"best_lap", &"p2")).value == 0
 	)
 
-	var removed: DotResult = await store.remove_player(&"p1")
+	var removed: GSResult = await store.remove_player(&"p1")
 	_check("a player can be forgotten", removed.ok and removed.value == true and (await store.values_for(&"p1")).value.is_empty())
 
 	_line("")
@@ -519,23 +519,23 @@ func _test_memory_store() -> void:
 
 
 ## A store that fails on demand, part-way, the way the SQL store reports it.
-class FlakyStatsStore extends DotStatsStoreMemory:
+class FlakyStatsStore extends GSStatsStoreMemory:
 	var fail_with_unapplied: Dictionary = {}
 	var fail_all: bool = false
 	var calls: int = 0
 
-	func _merge(player_id: StringName, incoming: DotStatsValues, p_schema: DotStatsSchema, player_name: String) -> DotResult:
+	func _merge(player_id: StringName, incoming: GSStatsValues, p_schema: GSStatsSchema, player_name: String) -> GSResult:
 		calls += 1
 		if fail_all:
-			return DotResult.fail(DotError.CODE_IO, "the database is down")
+			return GSResult.fail(GSError.CODE_IO, "the database is down")
 		if not fail_with_unapplied.is_empty():
 			# Apply everything but the unapplied stats, then fail naming them.
-			var landed := DotStatsValues.new()
+			var landed := GSStatsValues.new()
 			for id in incoming.values:
 				if not fail_with_unapplied.has(String(id)):
 					landed.values[id] = incoming.values[id]
 			await super(player_id, landed, p_schema, player_name)
-			var res := DotResult.fail(DotError.CODE_IO, "lost the connection part-way")
+			var res := GSResult.fail(GSError.CODE_IO, "lost the connection part-way")
 			res.error.context["unapplied"] = fail_with_unapplied.duplicate()
 			fail_with_unapplied = {}
 			return res
@@ -546,7 +546,7 @@ func _test_tracker_store() -> void:
 	_section("the tracker keeps lifetime totals")
 
 	var store := FlakyStatsStore.new()
-	var tracker := DotStatsTracker.new()
+	var tracker := GSStatsTracker.new()
 	tracker.name = "StoringTracker"
 	tracker.schema = _store_schema()
 	tracker.report_to_backbone = false
@@ -559,7 +559,7 @@ func _test_tracker_store() -> void:
 	tracker.begin(&"p1", "Ada")
 	tracker.record(&"p1", &"kills", 2.0)
 	tracker.record(&"p1", &"level", 3.0)
-	var first: DotResult = await tracker.flush()
+	var first: GSResult = await tracker.flush()
 	_check("with no backbone, a flush still writes the store", first.ok and first.value == 1, first)
 	_check("and the reporter is never touched", tracker.reporter.queued() == 0)
 	_check("the store holds the totals", (await store.values_for(&"p1")).value.get_value(&"kills") == 2.0)
@@ -580,12 +580,12 @@ func _test_tracker_store() -> void:
 	tracker.record(&"p1", &"kills", 5.0)
 	tracker.record(&"p1", &"level", 9.0)
 	store.fail_with_unapplied = {"level": 9.0}
-	var partial: DotResult = await tracker.flush()
+	var partial: GSResult = await tracker.flush()
 	_check("a write that fails part-way is reported", not partial.ok)
 	_check("and only what did not land waits", tracker.store_pending() == 1
-		and (tracker.get("_store_pending")[&"p1"]["values"] as DotStatsValues).size() == 1)
+		and (tracker.get("_store_pending")[&"p1"]["values"] as GSStatsValues).size() == 1)
 	await tracker.flush()
-	var after: DotStatsValues = (await store.values_for(&"p1")).value
+	var after: GSStatsValues = (await store.values_for(&"p1")).value
 	_check(
 		"then lands once: the kills that landed are not added again (7 + 5), and the level arrives",
 		after.get_value(&"kills") == 12.0 and after.get_value(&"level") == 9.0
@@ -601,7 +601,7 @@ func _test_tracker_store() -> void:
 	await tracker.flush()
 	store.fail_all = false
 	await tracker.flush()
-	var back: DotStatsValues = (await store.values_for(&"p1")).value
+	var back: GSStatsValues = (await store.values_for(&"p1")).value
 	_check(
 		"a store that was down loses nothing, and a gauge ends at its newest reading",
 		back.get_value(&"level") == 11.0 and back.get_value(&"kills") == 13.0 and tracker.store_pending() == 0
@@ -611,8 +611,8 @@ func _test_tracker_store() -> void:
 
 	# Both: the store and the reporter are handed the same deltas.
 	var backbone := FakeBackbone.new()
-	var both_store := DotStatsStoreMemory.new()
-	var both := DotStatsTracker.new()
+	var both_store := GSStatsStoreMemory.new()
+	var both := GSStatsTracker.new()
 	both.name = "BothTracker"
 	both.schema = _make_schema()
 	both.report_to_backbone = true
@@ -622,9 +622,9 @@ func _test_tracker_store() -> void:
 	add_child(both)
 	both.record(&"p9", &"kills", 3.0)
 	both.record(&"p9", &"secret", 2.0)
-	var flushed: DotResult = await both.flush()
+	var flushed: GSResult = await both.flush()
 	var sent: Dictionary = (backbone.calls[-1]["body"]["players"] as Array)[0]["stats"] if backbone.calls.size() > 1 else {}
-	var kept: DotStatsValues = (await both_store.values_for(&"p9")).value
+	var kept: GSStatsValues = (await both_store.values_for(&"p9")).value
 	_check(
 		"with both, the backbone and the store are told the same kills",
 		flushed.ok and float(sent.get("kills", 0)) == 3.0 and kept.get_value(&"kills") == 3.0
@@ -640,7 +640,7 @@ func _test_tracker_store() -> void:
 
 
 func _finish() -> void:
-	if not DotPlatform.is_headless():
+	if not GSPlatform.is_headless():
 		return
 
 	await get_tree().process_frame

@@ -1,10 +1,10 @@
-class_name DotStatsEventFeed
+class_name GSStatsEventFeed
 extends RefCounted
 ## Turns a game's own events into tracker records: the game supplies ids and an event source, never the shape.
-## Batching stays in [DotStatsReporter]; other inputs add a [code]report_*[/code] method calling
+## Batching stays in [GSStatsReporter]; other inputs add a [code]report_*[/code] method calling
 ## [method actor], so identity rules live in one place.
 
-var tracker: DotStatsTracker
+var tracker: GSStatsTracker
 ## [code]func(id: Variant) -> StringName[/code]: the stats key of a game-side id. Default is [code]StringName(str(id))[/code].
 var key_of: Callable
 ## [code]func(id: Variant) -> String[/code]: a display name, or "" when unknown.
@@ -15,7 +15,7 @@ var is_bot: Callable
 var extra: Callable
 
 
-func _init(tracker_: DotStatsTracker) -> void:
+func _init(tracker_: GSStatsTracker) -> void:
 	tracker = tracker_
 
 
@@ -50,7 +50,7 @@ func report_kill(killer: Variant, victim: Variant, weapon: String = "", meta: Di
 	return tracker.record_kill(k["key"], v["key"], weapon, data)
 
 
-## Files one landed hit by body zone (see [DotStatsHitzones]; the schema must declare them). [param side] is left/middle/right or "". World and self hits are refused.
+## Files one landed hit by body zone (see [GSStatsHitzones]; the schema must declare them). [param side] is left/middle/right or "". World and self hits are refused.
 func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringName, amount: float = 0.0, killed: bool = false, side: StringName = &"") -> bool:
 	if tracker == null or shooter == null or victim == null or zone == &"":
 		return false
@@ -60,19 +60,19 @@ func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringN
 	var wname := weapon if weapon != "" else "unknown"
 	# The joint axis is what lets the site show one weapon's zones; separate cells cannot be crossed.
 	var dims := {"weapon": wname, "zone": String(zone), "weapon_zone": "%s.%s" % [wname, zone]}
-	var ok := tracker.record(s["key"], DotStatsHitzones.HITS, 1.0, dims).ok
+	var ok := tracker.record(s["key"], GSStatsHitzones.HITS, 1.0, dims).ok
 	if amount > 0.0:
-		ok = tracker.record(s["key"], DotStatsHitzones.DAMAGE, amount, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsHitzones.DAMAGE, amount, dims).ok and ok
 	if killed:
-		ok = tracker.record(s["key"], DotStatsHitzones.KILLS, 1.0, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsHitzones.KILLS, 1.0, dims).ok and ok
 	if side != &"":
 		dims["side"] = String(side)
 		dims["weapon_side"] = "%s.%s" % [wname, side]
-		ok = tracker.record(s["key"], DotStatsHitzones.SIDE_HITS, 1.0, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsHitzones.SIDE_HITS, 1.0, dims).ok and ok
 	return ok
 
 
-## Files one hit by a round that passed [param kind] (wall or body) first; see [DotStatsPenetration]. World and self hits are refused.
+## Files one hit by a round that passed [param kind] (wall or body) first; see [GSStatsPenetration]. World and self hits are refused.
 func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind: StringName, amount: float = 0.0, killed: bool = false) -> bool:
 	if tracker == null or shooter == null or victim == null or kind == &"":
 		return false
@@ -80,15 +80,15 @@ func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind:
 	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
 		return false
 	var dims := {"weapon": weapon if weapon != "" else "unknown", "kind": String(kind)}
-	var ok := tracker.record(s["key"], DotStatsPenetration.HITS, 1.0, dims).ok
+	var ok := tracker.record(s["key"], GSStatsPenetration.HITS, 1.0, dims).ok
 	if amount > 0.0:
-		ok = tracker.record(s["key"], DotStatsPenetration.DAMAGE, amount, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsPenetration.DAMAGE, amount, dims).ok and ok
 	if killed:
-		ok = tracker.record(s["key"], DotStatsPenetration.KILLS, 1.0, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsPenetration.KILLS, 1.0, dims).ok and ok
 	return ok
 
 
-## Files one wall a round crossed: its [param cost] in power and one pass, by material and weapon-and-material (see [method DotStatsPenetration.declare_walls]). Refused for an unnamed material or a world shooter.
+## Files one wall a round crossed: its [param cost] in power and one pass, by material and weapon-and-material (see [method GSStatsPenetration.declare_walls]). Refused for an unnamed material or a world shooter.
 func report_wall_pass(shooter: Variant, weapon: String, material: StringName, cost: float) -> bool:
 	if tracker == null or shooter == null or material == &"":
 		return false
@@ -97,34 +97,34 @@ func report_wall_pass(shooter: Variant, weapon: String, material: StringName, co
 		return false
 	var wname := weapon if weapon != "" else "unknown"
 	var dims := {"material": String(material), "weapon_material": "%s.%s" % [wname, material]}
-	var ok := tracker.record(s["key"], DotStatsPenetration.PASSES, 1.0, dims).ok
+	var ok := tracker.record(s["key"], GSStatsPenetration.PASSES, 1.0, dims).ok
 	if cost > 0.0:
-		ok = tracker.record(s["key"], DotStatsPenetration.COST, cost, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsPenetration.COST, cost, dims).ok and ok
 	return ok
 
 
-## Files one resolved shot: a pull of the trigger, and a hit when it met someone (see [method DotStatsShots.declare]). Refused for an unnamed shooter or when the schema lacks [constant DotStatsShots.SHOTS].
+## Files one resolved shot: a pull of the trigger, and a hit when it met someone (see [method GSStatsShots.declare]). Refused for an unnamed shooter or when the schema lacks [constant GSStatsShots.SHOTS].
 func report_shot_outcome(shooter: Variant, weapon: String, hit: bool) -> bool:
-	if tracker == null or shooter == null or not tracker.schema.has(DotStatsShots.SHOTS):
+	if tracker == null or shooter == null or not tracker.schema.has(GSStatsShots.SHOTS):
 		return false
 	var s := actor(shooter)
 	if s["key"] == &"":
 		return false
 	var dims := {"weapon": weapon if weapon != "" else "unknown"}
-	var ok := tracker.record(s["key"], DotStatsShots.SHOTS, 1.0, dims).ok
+	var ok := tracker.record(s["key"], GSStatsShots.SHOTS, 1.0, dims).ok
 	if hit:
-		ok = tracker.record(s["key"], DotStatsShots.HITS, 1.0, dims).ok and ok
+		ok = tracker.record(s["key"], GSStatsShots.HITS, 1.0, dims).ok and ok
 	return ok
 
 
 ## Connects a resolved-shot signal (GameSpice Combat's `shot_resolved(shot)`) to [method report_shot_outcome]: the one line that gives any game accuracy.
-## The shot is read by duck type (`attacker`, `weapon_id`, `hit_anyone()`), so GameSpice Stats names no GameSpice Combat class. Declare [method DotStatsShots.declare] in the schema before the tracker starts; returns false (and connects nothing) when it is missing.
+## The shot is read by duck type (`attacker`, `weapon_id`, `hit_anyone()`), so GameSpice Stats names no GameSpice Combat class. Declare [method GSStatsShots.declare] in the schema before the tracker starts; returns false (and connects nothing) when it is missing.
 ## Players only: a shooter [member key_of] gives no key (a bot, an NPC, the world) files nothing.
 func bind_shots(source: Signal) -> bool:
-	if tracker == null or not tracker.schema.has(DotStatsShots.SHOTS):
+	if tracker == null or not tracker.schema.has(GSStatsShots.SHOTS):
 		return false
 	source.connect(func(shot: Object = null) -> void:
-		# DotStatsDamage by uid, not by name: it names this class back (a script loop stays in memory, Godot 4.7).
+		# GSStatsDamage by uid, not by name: it names this class back (a script loop stays in memory, Godot 4.7).
 		var _n: int = load("uid://c1lo1setv8lix").report_shot_outcome(self, shot))
 	return true
 

@@ -1,7 +1,7 @@
-class_name DotStatsPenetration
+class_name GSStatsPenetration
 extends RefCounted
 ## The stats a game keeps for rounds that passed a wall or a body first, declared once so every game shares ids.
-## [method declare] adds them to a schema; [method DotStatsEventFeed.report_penetration] fills them.
+## [method declare] adds them to a schema; [method GSStatsEventFeed.report_penetration] fills them.
 ## The kind (wall, body) is a breakdown axis: a wallbang differs from a shot through a player.
 
 const HITS := &"penetration_hits"
@@ -19,7 +19,7 @@ const KIND_RICOCHET := &"ricochet"
 
 
 ## Declares the three stats on [param schema] unless already present; returns how many were added.
-static func declare(schema: DotStatsSchema) -> int:
+static func declare(schema: GSStatsSchema) -> int:
 	var added := 0
 	for spec in [
 		[HITS, "Penetrating hits"],
@@ -28,7 +28,7 @@ static func declare(schema: DotStatsSchema) -> int:
 	]:
 		if schema.has(spec[0]):
 			continue
-		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
+		var def := schema.define(spec[0], GSStatsDef.Kind.COUNTER, spec[1])
 		def.breakdowns = PackedStringArray(["weapon", "kind"])
 		def.category = "penetration"
 		def.publish = true
@@ -38,7 +38,7 @@ static func declare(schema: DotStatsSchema) -> int:
 
 ## Declares [constant COST] and [constant PASSES] on [param schema] unless present; returns how many were added.
 ## Their axes are [code]material[/code] and the joint [code]weapon_material[/code] ("weapon.material").
-static func declare_walls(schema: DotStatsSchema) -> int:
+static func declare_walls(schema: GSStatsSchema) -> int:
 	var added := 0
 	for spec in [
 		[COST, "Power spent crossing walls"],
@@ -46,7 +46,7 @@ static func declare_walls(schema: DotStatsSchema) -> int:
 	]:
 		if schema.has(spec[0]):
 			continue
-		var def := schema.define(spec[0], DotStatsDef.Kind.COUNTER, spec[1])
+		var def := schema.define(spec[0], GSStatsDef.Kind.COUNTER, spec[1])
 		def.breakdowns = PackedStringArray(["material", "weapon_material"])
 		def.category = "penetration"
 		def.publish = true

@@ -10,12 +10,12 @@ const _ICON := "res://addons/dot_stats/icon_placeholder.svg"
 
 const _TYPES := [
 	[
-		"DotStatsTracker",
+		"GSStatsTracker",
 		"Node",
 		"res://addons/dot_stats/runtime/dot_stats_tracker.gd",
 	],
 	[
-		"DotStatsClient",
+		"GSStatsClient",
 		"Node",
 		"res://addons/dot_stats/runtime/dot_stats_client.gd",
 	],

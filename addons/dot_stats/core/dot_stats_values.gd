@@ -1,9 +1,9 @@
-class_name DotStatsValues
+class_name GSStatsValues
 extends RefCounted
 
 ## A set of stat values for one player, merged by a schema.
 ##
-## [b]Deliberately not GameSpice Leaderboard's [code]DotStatSet[/code].[/b] That class
+## [b]Deliberately not GameSpice Leaderboard's [code]GSStatSet[/code].[/b] That class
 ## is additive everywhere and a caller picks "best" or "lowest" per call; this
 ## one takes the rule from the definition, so the same [method record] call is
 ## right for every kind and a counter cannot be handed to a code path that
@@ -29,10 +29,10 @@ static func cell_key(id: StringName, cell: String) -> String:
 ## Refuses a non-finite reading rather than storing it: a NaN counter can never
 ## be added to again and a NaN best can never be beaten, and nothing downstream
 ## can tell a poisoned value from a real one.
-func record(def: DotStatsDef, reading: float, dims: Dictionary = {}) -> DotResult:
+func record(def: GSStatsDef, reading: float, dims: Dictionary = {}) -> GSResult:
 	if not is_finite(reading):
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"A stat reading must be a finite number.",
 			String(def.id)
 		)
@@ -42,11 +42,11 @@ func record(def: DotStatsDef, reading: float, dims: Dictionary = {}) -> DotResul
 	for axis in dims:
 		var key := cell_key(def.id, "%s:%s" % [axis, dims[axis]])
 		cells[key] = def.merge(float(cells.get(key, 0.0)), reading, cells.has(key))
-	return DotResult.success(next)
+	return GSResult.success(next)
 
 
 ## Folds one breakdown cell ("stat|axis:value") in by the stat's rule. False when the reading is not finite.
-func record_cell(def: DotStatsDef, key: String, reading: float) -> bool:
+func record_cell(def: GSStatsDef, key: String, reading: float) -> bool:
 	if not is_finite(reading):
 		return false
 	cells[key] = def.merge(float(cells.get(key, 0.0)), reading, cells.has(key))
@@ -103,7 +103,7 @@ func clear() -> void:
 ## What the reporter does with two readings of one player between flushes, and
 ## what a lifetime total does with a session — the same walk either way. A stat
 ## the schema does not know is skipped, because there is no rule to merge it by.
-func merge_from(other: DotStatsValues, schema: DotStatsSchema) -> void:
+func merge_from(other: GSStatsValues, schema: GSStatsSchema) -> void:
 	for id in other.values:
 		var def := schema.find(id)
 		if def == null:
@@ -131,8 +131,8 @@ func to_dictionary() -> Dictionary:
 ##
 ## Dropped rather than coerced: [code]float("banana")[/code] is [code]0.0[/code],
 ## and a zero that arrived by accident would quietly reset a counter.
-static func from_dictionary(data: Dictionary) -> DotStatsValues:
-	var v := DotStatsValues.new()
+static func from_dictionary(data: Dictionary) -> GSStatsValues:
+	var v := GSStatsValues.new()
 	for key in data:
 		var raw: Variant = data[key]
 		if raw is float or raw is int:
@@ -145,8 +145,8 @@ static func from_dictionary(data: Dictionary) -> DotStatsValues:
 	return v
 
 
-func duplicate_values() -> DotStatsValues:
-	var v := DotStatsValues.new()
+func duplicate_values() -> GSStatsValues:
+	var v := GSStatsValues.new()
 	v.values = values.duplicate()
 	v.cells = cells.duplicate()
 	return v
@@ -157,4 +157,4 @@ func describe() -> Dictionary:
 
 
 func _to_string() -> String:
-	return "DotStatsValues(%s)" % JSON.stringify(to_dictionary())
+	return "GSStatsValues(%s)" % JSON.stringify(to_dictionary())

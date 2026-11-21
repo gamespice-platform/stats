@@ -1,10 +1,10 @@
-class_name DotStatsReporter
+class_name GSStatsReporter
 extends RefCounted
 
 ## Sends players' statistics to the TMC backbone, coalesced and in batches,
 ## without losing them.
 ##
-## [b]GameSpice Auth is not a dependency and [code]DotBackboneClient[/code] is not
+## [b]GameSpice Auth is not a dependency and [code]GSBackboneClient[/code] is not
 ## named.[/b] The family rule: a script that mentions an absent
 ## [code]class_name[/code] fails to parse. The client is held as an [Object] and
 ## its [code]post_integration(path, body)[/code] is called by name — the generic
@@ -34,7 +34,7 @@ extends RefCounted
 ## the first. See [code]docs/api/integration-api.md[/code] in website-city.
 ##
 ## [b]A player id is a pseudonym, never an account id.[/b] It is the per-scope
-## key GameSpice User's [code]DotUserScope[/code] derives, or the one the backbone's
+## key GameSpice User's [code]GSUserScope[/code] derives, or the one the backbone's
 ## [code]play/scope-key[/code] hands a client on join. An id shaped like a
 ## GameSpice Auth account uid ([code]backbone:…[/code]) is refused here, because a
 ## server that filed those would hand every operator a stable global identifier
@@ -67,7 +67,7 @@ var client: Object = null
 var client_service: StringName = &"dot_backbone_client"
 
 ## The stats readings are checked against and coalesced by.
-var schema: DotStatsSchema = null
+var schema: GSStatsSchema = null
 
 ## The server id sent with a batch; 0 sends none (a server credential uses its own).
 var server_id: int = 0
@@ -84,7 +84,7 @@ var batch_limit: int = 50
 ## Sessions opened or closed and not yet acknowledged: session id -> wire row.
 var _sessions: Dictionary = {}
 
-## row key -> {"player", "name", "values": DotStatsValues, "bot", "session", "user"}, in arrival order.
+## row key -> {"player", "name", "values": GSStatsValues, "bot", "session", "user"}, in arrival order.
 var _queue: Dictionary = {}
 
 ## Kills waiting for the next batch, oldest first; the oldest are dropped past [member kill_cap].
@@ -101,8 +101,8 @@ var failures: int = 0
 var last_error: String = ""
 
 
-static func with_client(p_client: Object, p_schema: DotStatsSchema) -> DotStatsReporter:
-	var r := DotStatsReporter.new()
+static func with_client(p_client: Object, p_schema: GSStatsSchema) -> GSStatsReporter:
+	var r := GSStatsReporter.new()
 	r.client = p_client
 	r.schema = p_schema
 	return r
@@ -110,7 +110,7 @@ static func with_client(p_client: Object, p_schema: DotStatsSchema) -> DotStatsR
 
 func is_available() -> bool:
 	if client == null or not is_instance_valid(client):
-		var found := DotRegistry.get_service(client_service)
+		var found := GSRegistry.get_service(client_service)
 		client = found if found != null and found.has_method("post_integration") else null
 	return client != null and client.has_method("post_integration") and schema != null
 
@@ -132,13 +132,13 @@ static func is_player_id(candidate: String) -> bool:
 ## find out from a log line rather than from every submission failing.
 func queue(
 	player_id: StringName, player_name: String, readings: Dictionary, meta: Dictionary = {}, cells: Dictionary = {}
-) -> DotResult:
+) -> GSResult:
 	if schema == null:
-		return DotResult.fail(DotError.CODE_STATE, "The reporter has no schema.")
+		return GSResult.fail(GSError.CODE_STATE, "The reporter has no schema.")
 
 	if not is_player_id(String(player_id)):
-		return DotResult.fail(
-			DotError.CODE_INVALID,
+		return GSResult.fail(
+			GSError.CODE_INVALID,
 			"A player id must be a pseudonymous scoped key, not an account id.",
 			String(player_id).substr(0, 16)
 		)
@@ -146,7 +146,7 @@ func queue(
 	var session := str(meta.get("session", ""))
 	var qkey := String(player_id) if session == "" else "%s|%s" % [player_id, session]
 	var row: Dictionary = _queue.get(qkey, {})
-	var values: DotStatsValues = row.get("values", DotStatsValues.new())
+	var values: GSStatsValues = row.get("values", GSStatsValues.new())
 	var accepted := 0
 
 	for key in readings:
@@ -170,7 +170,7 @@ func queue(
 			accepted += 1
 
 	if accepted == 0:
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	# Re-inserted rather than updated in place so a player who keeps scoring
 	# moves to the newest end and is the last to be dropped.
@@ -185,13 +185,13 @@ func queue(
 		_queue.erase(oldest)
 		dropped += 1
 		if dropped == 1 or dropped % 100 == 0:
-			DotLog.warn(
+			GSLog.warn(
 				CHANNEL,
 				"the stats queue is full; dropping the oldest player",
 				{"limit": player_limit, "dropped": dropped}
 			)
 
-	return DotResult.success(accepted)
+	return GSResult.success(accepted)
 
 
 ## The batch sent and not yet acknowledged: resent unchanged, under the same id, until it is.
@@ -271,15 +271,15 @@ func _has_work() -> bool:
 
 
 ## Sends up to [member batch_limit] players. Removes them only on success.
-func flush() -> DotResult:
+func flush() -> GSResult:
 	if not _has_work():
-		return DotResult.success(0)
+		return GSResult.success(0)
 
 	if not is_available():
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"No backbone client to report through.",
-			"assign DotStatsReporter.client from dot-auth's DotBackboneClient"
+			"assign GSStatsReporter.client from dot-auth's GSBackboneClient"
 		)
 
 	if _inflight.is_empty():
@@ -293,24 +293,24 @@ func flush() -> DotResult:
 		body["server"] = server_id
 	var result: Variant = await client.call("post_integration", SUBMIT_PATH, body)
 
-	if not (result is DotResult):
+	if not (result is GSResult):
 		failures += 1
-		last_error = "the client returned something that is not a DotResult"
-		return DotResult.fail(DotError.CODE_INTERNAL, last_error)
+		last_error = "the client returned something that is not a GSResult"
+		return GSResult.fail(GSError.CODE_INTERNAL, last_error)
 
-	var typed := result as DotResult
+	var typed := result as GSResult
 	if not typed.ok:
 		failures += 1
 		last_error = typed.error.message
 		if typed.error.http_status == 403:
 			# Will not fix itself; retrying it for ever only fills the log.
-			DotLog.warn(
+			GSLog.warn(
 				CHANNEL,
 				"the backbone refused the report; the integration may lack a scope",
 				{"need": SCOPE_WRITE}
 			)
 		else:
-			DotLog.warn(
+			GSLog.warn(
 				CHANNEL,
 				"stats report failed; keeping the queue",
 				{"why": typed.error.message, "queued": _queue.size()}
@@ -325,8 +325,8 @@ func flush() -> DotResult:
 	sent += count
 	last_error = ""
 
-	DotLog.debug(CHANNEL, "stats reported", {"players": count})
-	return DotResult.success(count)
+	GSLog.debug(CHANNEL, "stats reported", {"players": count})
+	return GSResult.success(count)
 
 
 ## Moves up to one batch out of the queues into [member _inflight], so a retry resends the same body.
@@ -335,7 +335,7 @@ func _freeze_batch() -> void:
 	var players: Array = []
 	for i in range(mini(ids.size(), batch_limit)):
 		var row: Dictionary = _queue[ids[i]]
-		var vals: DotStatsValues = row["values"]
+		var vals: GSStatsValues = row["values"]
 		var entry := {
 			"player": str(row["player"]), "bot": bool(row["bot"]), "name": str(row["name"]),
 			"stats": vals.to_dictionary(),
@@ -361,14 +361,14 @@ func _freeze_batch() -> void:
 
 
 ## Flushes until the queue is empty or a flush fails.
-func flush_all() -> DotResult:
+func flush_all() -> GSResult:
 	var total := 0
 	while _has_work():
 		var res := await flush()
 		if not res.ok:
 			return res
 		total += int(res.value)
-	return DotResult.success(total)
+	return GSResult.success(total)
 
 
 ## Declares the schema's published stats to the backbone.
@@ -377,10 +377,10 @@ func flush_all() -> DotResult:
 ## changed ones move. Presentation — a name, a unit — is editorial and separate
 ## from filing, which is why this is its own call rather than folded into the
 ## first submission.
-func define() -> DotResult:
+func define() -> GSResult:
 	if not is_available():
-		return DotResult.fail(
-			DotError.CODE_STATE, "No backbone client to declare through."
+		return GSResult.fail(
+			GSError.CODE_STATE, "No backbone client to declare through."
 		)
 
 	var list: Array = []
@@ -388,20 +388,20 @@ func define() -> DotResult:
 		list.append(wire_definition(d))
 
 	if list.is_empty():
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"No stat is published; there is nothing to declare.",
-			"set DotStatsDef.publish on the ones the site should hold"
+			"set GSStatsDef.publish on the ones the site should hold"
 		)
 
 	var result: Variant = await client.call(
 		"post_integration", DEFINE_PATH, {"stats": list}
 	)
-	if not (result is DotResult):
-		return DotResult.fail(
-			DotError.CODE_INTERNAL, "the client returned something that is not a DotResult"
+	if not (result is GSResult):
+		return GSResult.fail(
+			GSError.CODE_INTERNAL, "the client returned something that is not a GSResult"
 		)
-	return result as DotResult
+	return result as GSResult
 
 
 # --- Reading the backbone's copy ------------------------------------------
@@ -412,10 +412,10 @@ func define() -> DotResult:
 ## kept separate from writing so a HUD that reads can never file. The value is
 ## the backbone's reply: [code]{player, name, stats: [{key, name, kind, unit,
 ## decimals, value}, …]}[/code].
-func fetch_player(player_id: StringName) -> DotResult:
+func fetch_player(player_id: StringName) -> GSResult:
 	if client == null or not client.has_method("get_integration"):
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"No backbone client that can read.",
 			"the client needs get_integration(path, query)"
 		)
@@ -435,10 +435,10 @@ func fetch_top(
 	limit: int = 25,
 	offset: int = 0,
 	player_id: StringName = &""
-) -> DotResult:
+) -> GSResult:
 	if client == null or not client.has_method("get_integration"):
-		return DotResult.fail(
-			DotError.CODE_STATE,
+		return GSResult.fail(
+			GSError.CODE_STATE,
 			"No backbone client that can read.",
 			"the client needs get_integration(path, query)"
 		)
@@ -451,14 +451,14 @@ func fetch_top(
 	return _read_result(result)
 
 
-func _read_result(result: Variant) -> DotResult:
-	if not (result is DotResult):
-		return DotResult.fail(
-			DotError.CODE_INTERNAL, "the client returned something that is not a DotResult"
+func _read_result(result: Variant) -> GSResult:
+	if not (result is GSResult):
+		return GSResult.fail(
+			GSError.CODE_INTERNAL, "the client returned something that is not a GSResult"
 		)
-	var typed := result as DotResult
+	var typed := result as GSResult
 	if not typed.ok and typed.error.http_status == 403:
-		DotLog.warn(
+		GSLog.warn(
 			CHANNEL,
 			"the backbone refused the read; the integration may lack a scope",
 			{"need": SCOPE_READ}
@@ -473,7 +473,7 @@ func _warn_once(id: StringName, why: String) -> void:
 	if _warned.has(id):
 		return
 	_warned[id] = true
-	DotLog.warn(
+	GSLog.warn(
 		CHANNEL,
 		"a reading names a stat that will not be reported",
 		{"stat": String(id), "why": why}
@@ -496,5 +496,5 @@ func describe() -> Dictionary:
 ## A stat as the backbone's `StatsDefineInput` names it: `key` on the wire, `id`
 ## here. `to_dictionary()` is this addon's file format, not the wire, and sending it
 ## had every definition refused by the schema — the two ends had never met.
-static func wire_definition(d: DotStatsDef) -> Dictionary:
+static func wire_definition(d: GSStatsDef) -> Dictionary:
 	return d.to_wire()

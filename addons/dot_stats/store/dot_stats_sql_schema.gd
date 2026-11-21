@@ -1,10 +1,10 @@
 @tool
-class_name DotStatsSqlSchema
+class_name GSStatsSqlSchema
 extends RefCounted
 
 ## The lifetime-values table, its statements and its row mapping, in one place.
 ##
-## Named [code]SqlSchema[/code] because [DotStatsSchema] is already this addon's word for
+## Named [code]SqlSchema[/code] because [GSStatsSchema] is already this addon's word for
 ## the set of stat definitions, and the two would be confused at every call site.
 ##
 ## [b]The table is plain data, rendered by GameSpice SQL.[/b] [method table_spec] is a
@@ -13,8 +13,8 @@ extends RefCounted
 ## [code]?[/code] in every dialect — GameSpice SQL's contract.
 ##
 ## [b]No statement here does arithmetic.[/b] The new value is computed by
-## [method DotStatsDef.merge] and written as a value, guarded by `revision` (see
-## [DotStatsStoreSql]). The SQL is the same in all three dialects as a result: there is no
+## [method GSStatsDef.merge] and written as a value, guarded by `revision` (see
+## [GSStatsStoreSql]). The SQL is the same in all three dialects as a result: there is no
 ## `GREATEST` (which SQLite spells `max`) and no `ON CONFLICT … amount + excluded.amount`
 ## (which MySQL spells another way) — and no second copy of the rule to disagree with the
 ## first.
@@ -37,7 +37,7 @@ const COLUMNS := ["player", "stat", "dim", "amount", "player_name", "revision", 
 ##
 ## - [b]`revision` is the guard[/b] a read-merge-write needs when two servers share the
 ##   table: an update says which revision it read, and finds no row if somebody else wrote
-##   in between. See [DotStatsStoreSql].
+##   in between. See [GSStatsStoreSql].
 ## - [b]The `(stat, amount)` index is the ranking.[/b] [method select_top] is a range scan
 ##   of it and a rank is a count over it.
 ## - [b]`player_name` is on every row[/b], denormalised, so a ranking renders without a
@@ -88,9 +88,9 @@ static func migration_steps(table: String = DEFAULT_TABLE) -> Array:
 
 ## Adds `dim` ('' = the player's total, else `axis:value`) to the key. A key cannot be altered
 ## portably, so the rows are copied into a new table that replaces the old one.
-static func _upgrade_dim(driver: Object, table: String) -> DotResult:
+static func _upgrade_dim(driver: Object, table: String) -> GSResult:
 	var fresh := table + "_dim"
-	var made: DotResult = await driver.ensure_table(_spec_v2(fresh))
+	var made: GSResult = await driver.ensure_table(_spec_v2(fresh))
 	if not made.ok:
 		return made
 	for sql in [
@@ -99,22 +99,22 @@ static func _upgrade_dim(driver: Object, table: String) -> DotResult:
 		"DROP TABLE %s" % table,
 		"ALTER TABLE %s RENAME TO %s" % [fresh, table],
 	]:
-		var step: DotResult = await driver.execute(sql)
+		var step: GSResult = await driver.execute(sql)
 		if not step.ok:
 			return step
-	return DotResult.success(true)
+	return GSResult.success(true)
 
 
 ## Step three: the ranking index carried the temporary table's name (`<table>_dim_top_dim_idx`).
 ## Create the new one, then drop the old; both orders are safe to re-run.
-static func _rename_rank_index(driver: Object, table: String) -> DotResult:
-	var mysql: bool = driver.dialect() == DotSqlDialect.Kind.MYSQL
+static func _rename_rank_index(driver: Object, table: String) -> GSResult:
+	var mysql: bool = driver.dialect() == GSSqlDialect.Kind.MYSQL
 	var old_name := "%s_%s" % [table + "_dim", INDEX_RANK_LEGACY]
 	for sql in rank_index_statements(table, old_name, mysql):
-		var step: DotResult = await driver.execute(sql)
+		var step: GSResult = await driver.execute(sql)
 		if not step.ok:
 			return step
-	return DotResult.success(true)
+	return GSResult.success(true)
 
 
 ## MySQL has no IF [NOT] EXISTS on indexes; the migrator runs a step once, so plain DDL there.
