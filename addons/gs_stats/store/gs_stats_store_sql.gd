@@ -31,7 +31,7 @@ const CHANNEL := "stats"
 ## Where statements go: a GameSpice SQL driver, or anything shaped like one.
 var driver = null
 
-## Table name, in case an operator already owns `dot_stats_values` or runs two games in one
+## Table name, in case an operator already owns `gs_stats_values` or runs two games in one
 ## database.
 var table: String = GSStatsSqlSchema.DEFAULT_TABLE
 

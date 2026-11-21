@@ -1,6 +1,6 @@
 extends "res://examples/stats_selftest_sql.gd"
 
-## Exercises dot-stats without a backbone.
+## Exercises gs-stats without a backbone.
 ##
 ## The backbone client is faked one level above HTTP — the untyped
 ## `post_integration` seam is the whole point of it — so every check here is
@@ -27,7 +27,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
-	_line("dot-stats self-test")
+	_line("gs-stats self-test")
 	_line("")
 
 	_test_kinds()
@@ -143,7 +143,7 @@ func _test_schema() -> void:
 	early.format = "number"
 	var doc := site_schema.to_site_defs(7)
 	var rows: Array = doc["stats"]
-	_check("site defs carry the format, version and app id", doc["format"] == "dot-stat-defs" and doc["version"] == 1 and doc["game"] == 7)
+	_check("site defs carry the format, version and app id", doc["format"] == "gs-stat-defs" and doc["version"] == 1 and doc["game"] == 7)
 	_check("site defs leave the app id out when it is 0", not site_schema.to_site_defs().has("game"))
 	_check("site defs list published stats in order", rows.size() == 4 and rows[0]["key"] == "early" and rows[1]["key"] == "late")
 	_check("a derived stat names its inputs, difference as diff", rows[2]["derivedOp"] == "diff" and rows[2]["derivedNum"] == "late" and rows[2]["derivedDen"] == "early")
@@ -360,7 +360,7 @@ func _test_reporter_refuses_account_ids() -> void:
 
 	var account := reporter.queue(&"backbone:clx8f2k0000", "Ada", {"kills": 1})
 	_check(
-		"a dot-auth account uid is refused as a player",
+		"a gs-auth account uid is refused as a player",
 		not account.ok and account.code() == GSError.CODE_INVALID and reporter.queued() == 0
 	)
 

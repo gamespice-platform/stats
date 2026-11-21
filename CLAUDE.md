@@ -4,7 +4,7 @@ Per-player statistics a game declares once and reports to the TMC backbone in ba
 
 Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is specific to stats. The reasoning is in [docs/](docs/README.md).
 
-**The distributable is `addons/dot_stats/`.** It requires dot-core and dot-save (`ln -s ../../dot-save/addons/dot_save addons/dot_save`, gitignored; the file store lives there) (symlinked, `.gitignore`). dot-auth, dot-leaderboard and dot-sql are never named; dot-sql is linked only for the suites.
+**The distributable is `addons/gs_stats/`.** It requires gs-core and gs-save (`ln -s ../../gs-save/addons/gs_save addons/gs_save`, gitignored; the file store lives there) (symlinked, `.gitignore`). gs-auth, gs-leaderboard and gs-sql are never named; gs-sql is linked only for the suites.
 
 ## Read before
 
@@ -20,17 +20,17 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 
 | Path | What |
 | --- | --- |
-| `addons/dot_stats/core/` | `GSStatsDef` (one stat; `merge()` is the rule), `GSStatsSchema` (every stat a game keeps; the wire shape of define), `GSStatsValues` (one player's values; refuses NaN) |
-| `addons/dot_stats/net/` | `GSStatsReporter`: coalesces per player, batches, keeps its queue on failure |
-| `addons/dot_stats/store/` | `GSStatsStore` (abstract; ordering from the kind), memory, SQL via GameSpice SQL, `GSStatsSqlSchema` |
-| `addons/dot_stats/runtime/` | `GSStatsTracker` (the Node: begin/record/end per player, a timer, a final flush), `GSStatsClient` (a player reporting their own figures) |
+| `addons/gs_stats/core/` | `GSStatsDef` (one stat; `merge()` is the rule), `GSStatsSchema` (every stat a game keeps; the wire shape of define), `GSStatsValues` (one player's values; refuses NaN) |
+| `addons/gs_stats/net/` | `GSStatsReporter`: coalesces per player, batches, keeps its queue on failure |
+| `addons/gs_stats/store/` | `GSStatsStore` (abstract; ordering from the kind), memory, SQL via GameSpice SQL, `GSStatsSqlSchema` |
+| `addons/gs_stats/runtime/` | `GSStatsTracker` (the Node: begin/record/end per player, a timer, a final flush), `GSStatsClient` (a player reporting their own figures) |
 | `examples/stats_selftest.tscn` | the suite; all offline |
 | `examples/stats_sql_live.tscn` | the SQL store against real databases |
 
 ## Running and testing
 
 - The family's two steps ([family CLAUDE.md](../../CLAUDE.md#validating-anything)), then `godot --headless --path . res://examples/stats_selftest.tscn`.
-- Anything in the SQL store: `../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn` (SQLite always; Postgres and MySQL with `GS_SQL_PG_DSN` / `GS_SQL_MYSQL_DSN`).
+- Anything in the SQL store: `../gs-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn` (SQLite always; Postgres and MySQL with `GS_SQL_PG_DSN` / `GS_SQL_MYSQL_DSN`).
 - The backbone client is faked one level above HTTP (a class with `post_integration`), which is the seam the addon promises.
 - **Add a case for any change to the merge rule, the coalescing or the queue**: there a bug is a wrong number, not a crash.
 
@@ -52,7 +52,7 @@ Read the family [CLAUDE.md](../../CLAUDE.md) first; this file is only what is sp
 - Breakdown cells merge by the stat's own kind; `set_context` supplies axes a record omits, and `event()` runs `rules` (event to stat, `when`/`unless` tags, a value field or callback).
 - With `log_events`, `drain_events()` returns append-only rows `{session, player, is_bot, stat, dims, value, t}`; sessions are first-class (`session_info`, `session_ended`). Bots (`begin` meta `is_bot` or `bot_check`) never carry a linked-user claim; `tmc_user` is kept only with `link_tmc_user`.
 - The reporter posts `stats/v2/submit` (sessions, per-player `by` cells, frozen batch id resent unchanged). The tracker enforces `max_rate`; `GSStatsClient` refuses server-source stats; the SQL store has a `dim` column (key player, stat, dim). GameSpice Game and GameSpice Bot do not call the tracker yet, so they must pass `is_bot` in `begin` meta or set `bot_check`.
-- The reporter sends a UUID batch id and resends an unacknowledged batch unchanged under it. Session ids go out as UUIDs (`GSStatsReporter.wire_session_id`: a UUID passes, anything else maps to a stable one). `examples/fixtures/dot_submit_v2.schema.json` mirrors the site validator and the selftest checks the real payload against it; refresh it when `dotstats/payload.ts` changes.
+- The reporter sends a UUID batch id and resends an unacknowledged batch unchanged under it. Session ids go out as UUIDs (`GSStatsReporter.wire_session_id`: a UUID passes, anything else maps to a stable one). `examples/fixtures/gs_submit_v2.schema.json` mirrors the site validator and the selftest checks the real payload against it; refresh it when `gsstats/payload.ts` changes.
 
 Deliberately not here: app-wide totals across servers, server-level figures, anti-cheat, a tracker in GameSpice Server. [design](docs/design.md#deliberately-not-here)
 

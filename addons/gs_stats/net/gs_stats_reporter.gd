@@ -64,7 +64,7 @@ const ACCOUNT_PREFIX := "backbone:"
 var client: Object = null
 
 ## Registry name to find a client under when [member client] is not set.
-var client_service: StringName = &"dot_backbone_client"
+var client_service: StringName = &"gs_backbone_client"
 
 ## The stats readings are checked against and coalesced by.
 var schema: GSStatsSchema = null
@@ -279,7 +279,7 @@ func flush() -> GSResult:
 		return GSResult.fail(
 			GSError.CODE_STATE,
 			"No backbone client to report through.",
-			"assign GSStatsReporter.client from dot-auth's GSBackboneClient"
+			"assign GSStatsReporter.client from gs-auth's GSBackboneClient"
 		)
 
 	if _inflight.is_empty():

@@ -6,18 +6,18 @@ extends EditorPlugin
 ## No autoloads. A tracker belongs to a server, and a process running two servers
 ## — or a server and a client — has two of them.
 
-const _ICON := "res://addons/dot_stats/icon_placeholder.svg"
+const _ICON := "res://addons/gs_stats/icon_placeholder.svg"
 
 const _TYPES := [
 	[
 		"GSStatsTracker",
 		"Node",
-		"res://addons/dot_stats/runtime/dot_stats_tracker.gd",
+		"res://addons/gs_stats/runtime/gs_stats_tracker.gd",
 	],
 	[
 		"GSStatsClient",
 		"Node",
-		"res://addons/dot_stats/runtime/dot_stats_client.gd",
+		"res://addons/gs_stats/runtime/gs_stats_client.gd",
 	],
 ]
 

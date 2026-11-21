@@ -7,9 +7,9 @@ State the merge rule once per stat (add, replace or keep the better) and every p
 ## Install
 
 1. Get [Godot 4.7](https://godotengine.org/download).
-2. Either use [GameSpice Bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/dot_stats/` and [GameSpice Core](https://github.com/gamespice-platform/core)'s `addons/dot_core/` into your project and enable dot-stats in *Project > Project Settings > Plugins*.
+2. Either use [GameSpice Bootstrap](https://github.com/gamespice-platform/bootstrap), which clones every project and links the addons, or copy `addons/gs_stats/` and [GameSpice Core](https://github.com/gamespice-platform/core)'s `addons/gs_core/` into your project and enable gs-stats in *Project > Project Settings > Plugins*.
 
-GameSpice Core and [GameSpice Save](https://github.com/gamespice-platform/save) (copy its `addons/dot_save/` beside `dot_core`) are the dependencies. [GameSpice Auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`GSBackboneClient` for a server, `GSAuthClient` for a player).
+GameSpice Core and [GameSpice Save](https://github.com/gamespice-platform/save) (copy its `addons/gs_save/` beside `gs_core`) are the dependencies. [GameSpice Auth](https://github.com/gamespice-platform/auth) is optional and supplies the two clients (`GSBackboneClient` for a server, `GSAuthClient` for a player).
 
 ## Use
 
@@ -22,7 +22,7 @@ schema.define(&"level", GSStatsDef.Kind.GAUGE)          # kept, never reported
 var tracker := GSStatsTracker.new()
 tracker.schema = schema
 tracker.report_to_backbone = true
-tracker.reporter.client = backbone      # dot-auth's GSBackboneClient
+tracker.reporter.client = backbone      # gs-auth's GSBackboneClient
 add_child(tracker)
 
 tracker.begin(player_key, display_name) # the scoped key, never the account id
@@ -36,7 +36,7 @@ Every `report_interval` seconds (default 30) and once more on shutdown, the trac
 ## Lifetime totals on the server
 
 ```gdscript
-var store := GSStatsStoreSql.new(driver)   # any dot-sql driver; or GSStatsStoreMemory
+var store := GSStatsStoreSql.new(driver)   # any gs-sql driver; or GSStatsStoreMemory
 await store.open()                          # creates or migrates its table
 tracker.store = store                       # before add_child
 ```
@@ -52,7 +52,7 @@ A player's own client can report its own figures with the player's token and no 
 ```gdscript
 var mine := GSStatsClient.new()
 mine.schema = schema
-mine.client = auth_client        # dot-auth's GSAuthClient
+mine.client = auth_client        # gs-auth's GSAuthClient
 add_child(mine)
 
 mine.record(&"launches")
@@ -63,7 +63,7 @@ Both land on the same rows. Keep anything competitive on the server; this is for
 
 ## Stat catalogue file
 
-`tools/export_site_defs.gd` writes a game's published stats as the site's `dot-stat-defs` JSON, from the schema the game really builds, so the site owner imports it instead of retyping it. Run it from the game project with Godot headless as a script, passing `--source` (a script path), `--method` (the function returning the `GSStatsSchema`) and `--out`.
+`tools/export_site_defs.gd` writes a game's published stats as the site's `gs-stat-defs` JSON, from the schema the game really builds, so the site owner imports it instead of retyping it. Run it from the game project with Godot headless as a script, passing `--source` (a script path), `--method` (the function returning the `GSStatsSchema`) and `--out`.
 
 | Option | Does |
 | --- | --- |
@@ -74,7 +74,7 @@ The file is `GSStatsSchema.to_site_defs()`. A scaled `difference` is skipped wit
 
 ## Testing
 
-Import the project once, then run `examples/stats_selftest.tscn` headless with Godot. `examples/stats_sql_live.tscn` runs the SQL store against real databases through `../dot-sql/tools/test_live.sh`. More in [docs/](docs/README.md).
+Import the project once, then run `examples/stats_selftest.tscn` headless with Godot. `examples/stats_sql_live.tscn` runs the SQL store against real databases through `../gs-sql/tools/test_live.sh`. More in [docs/](docs/README.md).
 
 ## Status and licence
 

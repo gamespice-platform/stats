@@ -17,7 +17,7 @@ class RacingDriver extends GSSqlDriverRecording:
 			lose_updates -= 1
 			statements.append({"sql": sql, "params": params.duplicate()})
 			return GSResult.success(0)
-		if sql.begins_with("INSERT INTO dot_stats_values") and fail_inserts > 0:
+		if sql.begins_with("INSERT INTO gs_stats_values") and fail_inserts > 0:
 			fail_inserts -= 1
 			statements.append({"sql": sql, "params": params.duplicate()})
 			return GSResult.fail(GSError.CODE_IO, "UNIQUE constraint failed")
@@ -45,24 +45,24 @@ func _test_sql_store() -> void:
 	_check("the store opens", opened.ok, opened)
 	_check(
 		"the table, its ranking index and its schema version",
-		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values (").size() == 1
-			and driver.matching("CREATE INDEX IF NOT EXISTS dot_stats_values_top_idx").size() == 1
-			and driver.matching("INSERT INTO dot_sql_migrations").size() == 3
+		driver.matching("CREATE TABLE IF NOT EXISTS gs_stats_values (").size() == 1
+			and driver.matching("CREATE INDEX IF NOT EXISTS gs_stats_values_top_idx").size() == 1
+			and driver.matching("INSERT INTO gs_sql_migrations").size() == 3
 	)
 	_check(
 		"the ranking index is renamed: new created, legacy dropped",
-		driver.matching("CREATE INDEX IF NOT EXISTS dot_stats_values_stat_dim_amount_idx ON dot_stats_values").size() == 1
-			and driver.matching("DROP INDEX IF EXISTS dot_stats_values_dim_top_dim_idx").size() == 1
+		driver.matching("CREATE INDEX IF NOT EXISTS gs_stats_values_stat_dim_amount_idx ON gs_stats_values").size() == 1
+			and driver.matching("DROP INDEX IF EXISTS gs_stats_values_dim_top_dim_idx").size() == 1
 	)
 	var my := GSStatsSqlSchema.rank_index_statements("t", "t_dim_top_dim_idx", true)
 	_check("MySQL drops an index with ON <table>", my[1] == "DROP INDEX t_dim_top_dim_idx ON t")
 
 	_check(
 		"the dim upgrade copies rows into a keyed-by-dim table and swaps it in",
-		driver.matching("CREATE TABLE IF NOT EXISTS dot_stats_values_dim").size() == 1
+		driver.matching("CREATE TABLE IF NOT EXISTS gs_stats_values_dim").size() == 1
 			and driver.matching("SELECT player, stat, '', amount").size() == 1
-			and driver.matching("DROP TABLE dot_stats_values").size() == 1
-			and driver.matching("RENAME TO dot_stats_values").size() == 1
+			and driver.matching("DROP TABLE gs_stats_values").size() == 1
+			and driver.matching("RENAME TO gs_stats_values").size() == 1
 	)
 
 	await _sql_first_merges(store, driver, schema)
@@ -79,7 +79,7 @@ func _sql_first_merges(store: GSStatsStoreSql, driver: RacingDriver, schema: GSS
 	driver.clear()
 	driver.answers = {"SELECT stat, dim, amount, revision": []}
 	var first: GSResult = await store.merge(&"p'1", {"kills": 2, "best_lap": 12.5}, schema, "O'Brien")
-	var inserts := driver.matching("INSERT INTO dot_stats_values")
+	var inserts := driver.matching("INSERT INTO gs_stats_values")
 	_check("a new player is read, then inserted", first.ok and inserts.size() == 2 and str(driver.statements[0]["sql"]).begins_with("SELECT"), first)
 	_check(
 		"as a plain INSERT, never an upsert: a row somebody else made must not be overwritten",
@@ -94,8 +94,8 @@ func _sql_first_merges(store: GSStatsStoreSql, driver: RacingDriver, schema: GSS
 	driver.clear()
 	driver.answers = {"SELECT stat, dim, amount, revision": [{"stat": "kills", "dim": "weapon:rifle", "amount": 5.0, "revision": 2}]}
 	var cell: GSResult = await store.merge(&"p2", {"kills": 1, "kills|weapon:rifle": 2}, schema)
-	var cell_updates := driver.matching("UPDATE dot_stats_values")
-	var cell_inserts := driver.matching("INSERT INTO dot_stats_values")
+	var cell_updates := driver.matching("UPDATE gs_stats_values")
+	var cell_inserts := driver.matching("INSERT INTO gs_stats_values")
 	_check(
 		"a breakdown cell is its own row: updated by dim, the total inserted with dim empty",
 		cell.ok and cell_updates.size() == 1 and (cell_updates[0]["params"] as Array)[0] == 7.0
@@ -125,7 +125,7 @@ func _sql_existing_and_races(store: GSStatsStoreSql, driver: RacingDriver, schem
 		{"stat": "best_lap", "dim": "", "amount": 12.5, "revision": 2},
 	]}
 	await store.merge(&"p1", {"kills": 3, "top_speed": 20.0, "best_lap": 11.0}, schema, "")
-	var updates := driver.matching("UPDATE dot_stats_values")
+	var updates := driver.matching("UPDATE gs_stats_values")
 	_check("a best that was not beaten writes nothing; the others write once each", updates.size() == 2)
 	_check(
 		"a counter's new total is computed by GSStatsDef.merge and bound: 7 + 3, at revision 4",
@@ -155,7 +155,7 @@ func _sql_existing_and_races(store: GSStatsStoreSql, driver: RacingDriver, schem
 	_check(
 		"an update that lost a race is re-read and folded again, not written blind",
 		raced.ok and driver.matching("SELECT stat, dim, amount, revision").size() == 3
-			and driver.matching("UPDATE dot_stats_values").size() == 2 and store.conflicts == 1,
+			and driver.matching("UPDATE gs_stats_values").size() == 2 and store.conflicts == 1,
 		raced
 	)
 
@@ -232,5 +232,5 @@ func _sql_rankings(store: GSStatsStoreSql, driver: RacingDriver) -> void:
 	var refused_open: GSResult = await GSStatsStoreSql.new(newer).open()
 	_check(
 		"a database from a newer build is refused, and nothing is created in it",
-		not refused_open.ok and newer.matching("CREATE TABLE IF NOT EXISTS dot_stats_values").is_empty()
+		not refused_open.ok and newer.matching("CREATE TABLE IF NOT EXISTS gs_stats_values").is_empty()
 	)

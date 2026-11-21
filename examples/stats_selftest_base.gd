@@ -499,10 +499,10 @@ func _test_client() -> void:
 
 
 ## The payload the reporter really builds, checked field by field against the site's validator
-## (examples/fixtures/dot_submit_v2.schema.json mirrors its zod schema).
+## (examples/fixtures/gs_submit_v2.schema.json mirrors its zod schema).
 func _test_site_contract() -> void:
 	_section("site contract: stats/v2/submit")
-	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
+	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/gs_submit_v2.schema.json"))
 	var schema: GSStatsSchema = GSStatsSchema.from_dictionary({"stats": [
 		{"id": "fc.kills", "kind": "COUNTER", "publish": true, "breakdowns": ["weapon", "map"]},
 		{"id": "fc.longest_kill", "kind": "BEST", "publish": true},
@@ -562,7 +562,7 @@ func _test_site_contract() -> void:
 
 func _test_kills() -> void:
 	_section("kills: who killed whom")
-	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/dot_submit_v2.schema.json"))
+	var fx: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://examples/fixtures/gs_submit_v2.schema.json"))
 	var backbone := FakeBackbone.new()
 	var tracker := GSStatsTracker.new()
 	tracker.schema = GSStatsSchema.from_dictionary({"stats": [{"id": "fc.kills", "kind": "COUNTER", "publish": true}]}).value

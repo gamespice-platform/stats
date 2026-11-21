@@ -8,7 +8,7 @@ extends GSStatsStoreMemory
 const CHANNEL := "stats.store"
 
 ## Where the file lives; a [code]user://[/code] path, so the web build keeps it too.
-var path: String = "user://dot_stats.json"
+var path: String = "user://gs_stats.json"
 
 ## False writes the whole file inside every merge and remove (the old behaviour; a reader of the file sees each merge at once).
 var write_behind: bool = true
@@ -24,7 +24,7 @@ var _task: int = -1
 # Written by the worker, read on the main thread only after the task has completed.
 var _written: Array = []
 
-func _init(p_path: String = "user://dot_stats.json") -> void:
+func _init(p_path: String = "user://gs_stats.json") -> void:
 	path = p_path
 
 

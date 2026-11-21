@@ -168,7 +168,7 @@ func site_unsupported(d: GSStatsDef) -> bool:
 	return d.derived != null and d.derived.op == GSStatsDerived.Op.DIFFERENCE and d.derived.scale != 1.0
 
 
-## The published stats as the site's stat-catalog document (`dot-stat-defs`, version 1), the file the
+## The published stats as the site's stat-catalog document (`gs-stat-defs`, version 1), the file the
 ## hub imports. [param game] is the site app id; 0 leaves it out so one file imports into any app.
 func to_site_defs(game: int = 0) -> Dictionary:
 	var out: Array = []
@@ -204,7 +204,7 @@ func to_site_defs(game: int = 0) -> Dictionary:
 			# The site's ratio has no seconds divisor, so per_minute is ratio times 60.
 			e["derivedScale"] = d.derived.scale * 60.0 if op == "per_minute" else d.derived.scale
 		out.append(e)
-	var doc := {"format": "dot-stat-defs", "version": 1, "stats": out}
+	var doc := {"format": "gs-stat-defs", "version": 1, "stats": out}
 	if game > 0:
 		doc["game"] = game
 	return doc
@@ -214,7 +214,7 @@ static func from_dictionary(data: Dictionary) -> GSResult:
 	var schema := GSStatsSchema.new()
 	if int(data.get("version", 1)) > VERSION:
 		return GSResult.fail(
-			GSError.CODE_PARSE, "This schema is a newer version than dot-stats reads.",
+			GSError.CODE_PARSE, "This schema is a newer version than gs-stats reads.",
 			str(data.get("version"))
 		)
 	var list: Variant = data.get("stats", [])

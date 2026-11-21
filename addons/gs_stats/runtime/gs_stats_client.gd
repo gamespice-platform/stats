@@ -164,7 +164,7 @@ func flush() -> GSResult:
 		return GSResult.fail(
 			GSError.CODE_STATE,
 			"No client to report through.",
-			"assign GSStatsClient.client from dot-auth's GSAuthClient"
+			"assign GSStatsClient.client from gs-auth's GSAuthClient"
 		)
 
 	var body := {"stats": _delta.to_dictionary()}

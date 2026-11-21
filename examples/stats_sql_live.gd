@@ -8,12 +8,12 @@ extends Node
 ## and sets GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE:
 ##
 ## [codeblock]
-## ../dot-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
+## ../gs-sql/tools/test_live.sh . res://examples/stats_sql_live.tscn
 ## [/codeblock]
 
 const CHECKS := 13
 
-const TABLE := "dot_stats_live_values"
+const TABLE := "gs_stats_live_values"
 
 ## Merges fired at one player at once, one kill each, under GSHttp's pool of 16.
 const PILE := 12
@@ -30,20 +30,20 @@ var _landed := 0
 func _ready() -> void:
 	GSLog.set_level(GSLog.Level.ERROR)
 
-	var dialect := GSSqlDialect.from_name((OS.get_environment("GS_SQL_DIALECT") if OS.has_environment("GS_SQL_DIALECT") else OS.get_environment("DOT_SQL_DIALECT")))
+	var dialect := GSSqlDialect.from_name((OS.get_environment("GS_SQL_DIALECT") if OS.has_environment("GS_SQL_DIALECT") else OS.get_environment("GS_SQL_DIALECT")))
 	var made := GSSql.from_config({
 		"driver": "gateway",
-		"url": (OS.get_environment("GS_SQL_URL") if OS.has_environment("GS_SQL_URL") else OS.get_environment("DOT_SQL_URL")),
+		"url": (OS.get_environment("GS_SQL_URL") if OS.has_environment("GS_SQL_URL") else OS.get_environment("GS_SQL_URL")),
 		"dialect": GSSqlDialect.name_of(dialect),
-		"token": FileAccess.get_file_as_string((OS.get_environment("GS_SQL_TOKEN_FILE") if OS.has_environment("GS_SQL_TOKEN_FILE") else OS.get_environment("DOT_SQL_TOKEN_FILE"))).strip_edges(),
+		"token": FileAccess.get_file_as_string((OS.get_environment("GS_SQL_TOKEN_FILE") if OS.has_environment("GS_SQL_TOKEN_FILE") else OS.get_environment("GS_SQL_TOKEN_FILE"))).strip_edges(),
 	}, self)
 	if not made.ok or made.value == null:
-		print("set GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE; see dot-sql/tools/test_live.sh")
+		print("set GS_SQL_URL, GS_SQL_DIALECT and GS_SQL_TOKEN_FILE; see gs-sql/tools/test_live.sh")
 		get_tree().quit(2)
 		return
 
 	var driver: GSSqlDriverGateway = made.value
-	print("dot-stats live: %s" % GSSqlDialect.name_of(dialect))
+	print("gs-stats live: %s" % GSSqlDialect.name_of(dialect))
 
 	# A clean table every run.
 	await driver.open()
@@ -209,7 +209,7 @@ func _shape(res: GSResult) -> String:
 
 func _drop(driver) -> void:
 	await driver.execute("DROP TABLE IF EXISTS %s" % TABLE)
-	await driver.execute("DELETE FROM dot_sql_migrations WHERE component = ?", ["dot_stats:%s" % TABLE])
+	await driver.execute("DELETE FROM gs_sql_migrations WHERE component = ?", ["gs_stats:%s" % TABLE])
 
 
 func _check(what: String, passed: bool, res: GSResult = null, detail: String = "") -> void:

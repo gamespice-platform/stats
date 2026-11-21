@@ -19,12 +19,12 @@ extends RefCounted
 ## (which MySQL spells another way) — and no second copy of the rule to disagree with the
 ## first.
 
-const DEFAULT_TABLE := "dot_stats_values"
+const DEFAULT_TABLE := "gs_stats_values"
 
 ## The component the schema version is recorded under in GameSpice SQL's migration table,
 ## suffixed with the table name. Bumped by adding a step to [method migration_steps], never
 ## by editing one.
-const MIGRATION_COMPONENT := "dot_stats"
+const MIGRATION_COMPONENT := "gs_stats"
 
 ## The ranking index's name suffix; the legacy one came from the temporary step-two table.
 const INDEX_RANK := "stat_dim_amount_idx"
