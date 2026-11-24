@@ -302,7 +302,11 @@ func flush() -> GSResult:
 	if not typed.ok:
 		failures += 1
 		last_error = typed.error.message
-		if typed.error.http_status == 403:
+		if typed.error.context.get("backoff", false):
+			# GSBackboneClient.is_backoff: no call went out, the client is pausing after
+			# earlier failures (it logged those). The queue is kept; the next tick retries.
+			pass
+		elif typed.error.http_status == 403:
 			# Will not fix itself; retrying it for ever only fills the log.
 			GSLog.warn(
 				CHANNEL,

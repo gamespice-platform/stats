@@ -12,7 +12,7 @@ extends "res://examples/stats_selftest_sql.gd"
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 274
+const CHECKS := 276
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
@@ -320,6 +320,17 @@ func _test_reporter_keeps_its_queue() -> void:
 	var forbidden := await reporter.flush()
 	_check("a 403 keeps the queue too", not forbidden.ok and reporter.queued() == 1)
 
+	# A pause answer from the client is not a new failure to warn about.
+	var warned: Array[int] = [0]
+	var count_warn := func(rec: Dictionary) -> void:
+		if int(rec.get("level", -1)) == GSLog.Level.WARN:
+			warned[0] += 1
+	GSLog.signals().record.connect(count_warn)
+	var paused := await _flush_paused(reporter)
+	GSLog.signals().record.disconnect(count_warn)
+	_check("a backoff result keeps the queue", not paused.ok and reporter.queued() == 1)
+	_check("and logs no warning", warned[0] == 0)
+
 	var without := GSStatsReporter.new()
 	without.schema = _make_schema()
 	without.queue(&"p1", "P", {"kills": 1})
@@ -328,6 +339,23 @@ func _test_reporter_keeps_its_queue() -> void:
 
 	_line("")
 	_done()
+
+
+## Flushes through a client that answers like GSBackboneClient during its pause.
+func _flush_paused(reporter: GSStatsReporter) -> GSResult:
+	var paused := PausedBackbone.new()
+	var kept: Object = reporter.client
+	reporter.client = paused
+	var res := await reporter.flush()
+	reporter.client = kept
+	return res
+
+
+class PausedBackbone extends RefCounted:
+	func post_integration(_path: String, _body: Dictionary) -> GSResult:
+		var error := GSError.make(GSError.CODE_HTTP, "paused")
+		error.context["backoff"] = true
+		return GSResult.failure(error)
 
 
 func _test_reporter_bounds_its_queue() -> void:
