@@ -124,8 +124,8 @@ func bind_shots(source: Signal) -> bool:
 	if tracker == null or not tracker.schema.has(GSStatsShots.SHOTS):
 		return false
 	source.connect(func(shot: Object = null) -> void:
-		# GSStatsDamage by uid, not by name: it names this class back (a script loop stays in memory, Godot 4.7).
-		var _n: int = load("uid://c1lo1setv8lix").report_shot_outcome(self, shot))
+		# GSStatsDamage by path, not by name: it names this class back (a script loop stays in memory, Godot 4.7).
+		var _n: int = load("res://addons/gs_stats/runtime/gs_stats_damage.gd").report_shot_outcome(self, shot))
 	return true
 
 
