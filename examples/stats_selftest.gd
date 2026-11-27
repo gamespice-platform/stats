@@ -12,13 +12,13 @@ extends "res://examples/stats_selftest_sql.gd"
 ## godot --headless --path . res://examples/stats_selftest.tscn
 ## [/codeblock]
 
-const CHECKS := 276
+const CHECKS := 283
 
 ## Sections entered against sections that ran to their last line, and against this. A
 ## runtime error inside a section aborts that function and nothing says so; a section that
 ## bailed out early after a failed guard is counted as not finished on purpose. The CHECKS
 ## total is the other half — see docs/testing.md.
-const SECTIONS := 21
+const SECTIONS := 22
 
 
 func _ready() -> void:
@@ -51,6 +51,7 @@ func _run() -> void:
 	await _test_v2_submit()
 	await _test_site_contract()
 	await _test_kills()
+	_test_held_readings()
 
 	_line("")
 	_line("%d passed, %d failed" % [_passed, _failed])
@@ -665,6 +666,80 @@ func _test_tracker_store() -> void:
 
 	_line("")
 	_done()
+
+
+## A batched feed against a per-hit one, fed the same hits: the totals and every cell, to the last bit.
+func _test_held_readings() -> void:
+	_section("held readings match per-hit records")
+	var now := _feed_tracker(false)
+	var later := _feed_tracker(true)
+	var emits: Dictionary = {}
+	later[0].recorded.connect(func(p: StringName, s: StringName, v: float) -> void:
+		emits[[p, s]] = v)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var weapons := ["rifle", "smg", ""]
+	var zones := [&"head", &"chest", &"knee"]
+	for i in 3000:
+		var who := rng.randi_range(1, 4)
+		var victim := rng.randi_range(1, 4)
+		var w: String = weapons[rng.randi() % 3]
+		var amount := rng.randf_range(0.5, 99.5)
+		var killed := rng.randf() < 0.1
+		for pair: Array in [now, later]:
+			var feed: GSStatsEventFeed = pair[1]
+			feed.report_hit(who, victim, w, zones[i % 3], amount, killed, [&"", &"left", &"right"][i % 3])
+			feed.report_penetration(who, victim, w, [&"wall", &"body"][i % 2], amount * 0.5, killed)
+			feed.report_wall_pass(who, w, [&"wood", &"steel"][i % 2], amount * 0.01)
+			feed.report_shot_outcome(who, w, i % 4 != 0)
+			if i % 97 == 0:
+				(pair[0] as GSStatsTracker).record(&"p%d" % who, GSStatsHitzones.DAMAGE, 0.3)
+			if i % 89 == 0:
+				(pair[0] as GSStatsTracker).record_later(&"p%d" % who, &"t.best", amount, {}, "")
+	var t_now: GSStatsTracker = now[0]
+	var t_later: GSStatsTracker = later[0]
+	_check("held: readings wait for the apply", t_later.pending_players() > 0)
+	_check("held: a best is recorded at once", t_later.session_values(&"p2").get_value(&"t.best") == t_now.session_values(&"p2").get_value(&"t.best"))
+	_check("held: reading a session applies its player first", _same_values(t_now, t_later, &"p1") and t_later.pending_players() > 0)
+	t_later.apply_pending()
+	_check("held: nothing is left after the apply", t_later.pending_players() == 0)
+	var same := true
+	for id: StringName in [&"p1", &"p2", &"p3", &"p4"]:
+		same = same and _same_values(t_now, t_later, id)
+	_check("held: totals, cells and deltas match per-hit records exactly", same and t_now.session_values(&"p3").get_value(GSStatsHitzones.DAMAGE) > 0.0)
+	var last_ok := true
+	for key: Array in emits:
+		last_ok = last_ok and emits[key] == t_later.session_values(key[0]).get_value(key[1])
+	_check("held: recorded fires with each final total", last_ok and emits.size() > 4)
+	_check("held: dims are kept per cell", (later[1] as GSStatsEventFeed)._dims.size() > 0 and (now[1] as GSStatsEventFeed)._dims.size() == (later[1] as GSStatsEventFeed)._dims.size())
+	t_now.queue_free()
+	t_later.queue_free()
+	_done()
+
+
+func _feed_tracker(batched: bool) -> Array:
+	var tracker := GSStatsTracker.new()
+	tracker.schema = GSStatsSchema.from_dictionary({"stats": [{"id": "t.best", "kind": "BEST"}]}).value
+	GSStatsHitzones.declare(tracker.schema)
+	GSStatsPenetration.declare(tracker.schema)
+	GSStatsPenetration.declare_walls(tracker.schema)
+	GSStatsShots.declare(tracker.schema)
+	tracker.report_to_backbone = false
+	tracker.define_on_start = false
+	add_child(tracker)
+	tracker.start()
+	var feed := GSStatsEventFeed.new(tracker)
+	feed.key_of = func(id: Variant) -> StringName: return StringName("p%s" % id)
+	feed.batched = batched
+	return [tracker, feed]
+
+
+func _same_values(a: GSStatsTracker, b: GSStatsTracker, id: StringName) -> bool:
+	var va := a.session_values(id)
+	var vb := b.session_values(id)
+	var da: GSStatsValues = a._players[id]["delta"]
+	var db: GSStatsValues = b._players[id]["delta"]
+	return va.values == vb.values and va.cells == vb.cells and da.values == db.values and da.cells == db.cells
 
 
 func _finish() -> void:

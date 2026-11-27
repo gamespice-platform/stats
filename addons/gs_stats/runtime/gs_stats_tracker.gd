@@ -41,6 +41,9 @@ extends Node
 
 const CHANNEL := "stats"
 
+## Cells per stat whose keys [method record_later] keeps worked out; past it the cache starts over.
+const CELL_KEYS_KEPT := 4096
+
 ## Emitted when a reading is recorded. [param value] is the session value after it.
 signal recorded(player_id: StringName, stat_id: StringName, value: float)
 
@@ -123,6 +126,11 @@ var _context: Dictionary = {}
 ## and not yet written to it. The store's half of what the reporter's queue is.
 var _store_pending: Dictionary = {}
 var _store_writing: bool = false
+## What [method record_later] holds until [method apply_pending]:
+## player -> {stat -> [readings, cells, dims by cell]}, readings and their cells in the order they came.
+var _pending: Dictionary = {}
+## stat id -> {cell -> PackedStringArray of "stat|axis:value" keys}, worked out under the current context.
+var _cell_keys: Dictionary = {}
 var _store_failing: bool = false
 
 
@@ -182,6 +190,7 @@ func start() -> GSResult:
 
 
 func _exit_tree() -> void:
+	apply_pending()
 	if not _started or (not report_to_backbone and store == null):
 		return
 	_checkpoint_all()
@@ -231,6 +240,8 @@ func begin(player_id: StringName, player_name: String = "", meta: Dictionary = {
 func end(player_id: StringName) -> GSStatsValues:
 	if not _players.has(player_id):
 		return GSStatsValues.new()
+	if _pending.has(player_id):
+		_apply_player(player_id)
 	var row: Dictionary = _players[player_id]
 	_checkpoint(player_id, row)
 	_players.erase(player_id)
@@ -287,6 +298,8 @@ func players() -> Array[StringName]:
 func session_values(player_id: StringName) -> GSStatsValues:
 	if not _players.has(player_id):
 		return GSStatsValues.new()
+	if _pending.has(player_id):
+		_apply_player(player_id)
 	return (_players[player_id] as Dictionary)["session"]
 
 
@@ -296,6 +309,9 @@ func session_values(player_id: StringName) -> GSStatsValues:
 ##
 ## Merged over what was set before; an empty value clears that axis.
 func set_context(dims: Dictionary) -> void:
+	# Held readings land in the cells of the context they were made in.
+	apply_pending()
+	_cell_keys.clear()
 	for axis in dims:
 		if str(dims[axis]) == "":
 			_context.erase(str(axis))
@@ -335,6 +351,9 @@ func context() -> Dictionary:
 ## [param dims] names breakdown values (`{weapon = &"rifle"}`); axes the stat does not break
 ## down by are ignored and missing ones come from [method set_context].
 func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims: Dictionary = {}) -> GSResult:
+	if not _pending.is_empty() and _pending.has(player_id) and (_pending[player_id] as Dictionary).has(stat_id):
+		# Readings of this stat held earlier go in first, so the sums run in the order they came.
+		_apply_player(player_id)
 	if not _started:
 		var s := start()
 		if not s.ok:
@@ -381,6 +400,113 @@ func record(player_id: StringName, stat_id: StringName, value: float = 1.0, dims
 		_log_event(row, player_id, stat_id, value, dims)
 	recorded.emit(player_id, stat_id, float(applied.value))
 	return applied
+
+
+## Holds a counter reading for [method apply_pending], which a game calls once per tick: the same
+## totals and cells as one [method record] per reading (each held reading is added in the order it
+## came), for a dictionary append per reading instead of a validation, two merges and a signal.
+##
+## [param cell] names [param dims]: for one stat, the same cell always comes with the same dims, so the
+## breakdown cells are worked out once per cell rather than once per reading.
+##
+## Recorded at once instead, so nothing a held reading could change is held: an undeclared, derived or
+## non-counter stat; a stat with a [code]max_rate[/code], a minimum or a maximum; a reading that is not
+## finite or does not fit its type; and every reading while [member log_events] is on. Reading the
+## tracker (a player's session values, a leave, a flush, a context change) applies what is held first.
+## [signal recorded] fires once per player and stat per apply, with the session value after it.
+## Returns whether the reading was held or recorded.
+func record_later(player_id: StringName, stat_id: StringName, value: float, dims: Dictionary, cell: String) -> bool:
+	var def: GSStatsDef = schema.find(stat_id) if _started else null
+	if def == null or log_events or not _holdable(def, value):
+		return record(player_id, stat_id, value, dims).ok
+	if not _players.has(player_id):
+		begin(player_id)
+	var held: Variant = _pending.get(player_id)
+	if held == null:
+		held = {}
+		_pending[player_id] = held
+	var entry: Variant = held.get(stat_id)
+	if entry == null:
+		entry = [[], [], {}]
+		held[stat_id] = entry
+	(entry[0] as Array).append(value)
+	(entry[1] as Array).append(cell)
+	if not (entry[2] as Dictionary).has(cell):
+		entry[2][cell] = dims
+	return true
+
+
+## Folds every reading [method record_later] holds into the sessions and deltas. Nearly free when
+## nothing is held.
+func apply_pending() -> void:
+	if _pending.is_empty():
+		return
+	for player_id: StringName in _pending.keys():
+		_apply_player(player_id)
+
+
+func pending_players() -> int:
+	return _pending.size()
+
+
+## A counter whose every reading is accepted, whatever came before: what [method record_later] may hold.
+static func _holdable(def: GSStatsDef, value: float) -> bool:
+	if def.kind != GSStatsDef.Kind.COUNTER or def.derived != null or def.max_rate > 0.0 or def.has_min or def.has_max:
+		return false
+	if not is_finite(value):
+		return false
+	match def.value_type:
+		GSStatsDef.ValueType.INT:
+			return value == floorf(value)
+		GSStatsDef.ValueType.BOOL:
+			return false
+		GSStatsDef.ValueType.DURATION:
+			return value >= 0.0
+	return true
+
+
+func _apply_player(player_id: StringName) -> void:
+	var held: Dictionary = _pending[player_id]
+	_pending.erase(player_id)
+	var row: Dictionary = _players.get(player_id, {})
+	if row.is_empty():
+		return
+	var session: GSStatsValues = row["session"]
+	var delta: GSStatsValues = row["delta"]
+	for stat_id: StringName in held:
+		var entry: Array = held[stat_id]
+		var def := schema.find(stat_id)
+		if def == null:
+			continue
+		var tags: Array = entry[1]
+		var dims_by_cell: Dictionary = entry[2]
+		var keys: Array = []
+		keys.resize(tags.size())
+		for i in tags.size():
+			keys[i] = _cell_keys_for(def, tags[i], dims_by_cell[tags[i]])
+		session.fold(stat_id, entry[0], keys)
+		delta.fold(stat_id, entry[0], keys)
+	for stat_id: StringName in held:
+		recorded.emit(player_id, stat_id, session.get_value(stat_id))
+
+
+## The "stat|axis:value" keys a reading of [param def] named [param cell] lands in, kept per cell.
+func _cell_keys_for(def: GSStatsDef, cell: String, dims: Dictionary) -> PackedStringArray:
+	var by_cell: Variant = _cell_keys.get(def.id)
+	if by_cell == null:
+		by_cell = {}
+		_cell_keys[def.id] = by_cell
+	var known: Variant = by_cell.get(cell)
+	if known != null:
+		return known
+	var keys := PackedStringArray()
+	var cell_dims := _cell_dims(def, dims)
+	for axis in cell_dims:
+		keys.append(GSStatsValues.cell_key(def.id, "%s:%s" % [axis, cell_dims[axis]]))
+	if by_cell.size() >= CELL_KEYS_KEPT:
+		by_cell.clear()
+	by_cell[cell] = keys
+	return keys
 
 
 ## Runs every rule listening for [param event_name] over [param data] and returns how many readings
@@ -490,6 +616,7 @@ func flush() -> GSResult:
 
 
 func _checkpoint_all() -> void:
+	apply_pending()
 	for id in _players:
 		_checkpoint(id, _players[id])
 
@@ -619,6 +746,7 @@ func describe() -> Dictionary:
 		"reporter": reporter.describe(),
 		"store": store.describe() if store != null and store.has_method("describe") else null,
 		"store_pending": _store_pending.size(),
+		"held_players": _pending.size(),
 	}
 
 

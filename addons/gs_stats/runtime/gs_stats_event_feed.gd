@@ -13,6 +13,16 @@ var name_of: Callable
 var is_bot: Callable
 ## [code]func() -> Dictionary[/code] merged under every event (map, mode); the tracker context fills what is missing.
 var extra: Callable
+## Hits, penetrations, wall passes and shot outcomes go through [method GSStatsTracker.record_later]: the
+## game calls [method GSStatsTracker.apply_pending] once per tick and gets the same totals for a fraction of
+## the cost per hit. Kills are always recorded at once.
+var batched: bool = false
+
+## Breakdowns past which the kept dims start over.
+const DIMS_KEPT := 4096
+
+## Cell tag -> read-only dims, so a repeated hit builds no dictionary or string.
+var _dims: Dictionary = {}
 
 
 func _init(tracker_: GSStatsTracker) -> void:
@@ -21,7 +31,7 @@ func _init(tracker_: GSStatsTracker) -> void:
 
 ## Resolves an id to {key, name, bot}. A name equal to the key is no name: a bot's key is a storage id, and showing it as a name is wrong.
 func actor(id: Variant) -> Dictionary:
-	var key := key_of.call(id) if key_of.is_valid() else StringName(str(id))
+	var key := _key(id)
 	var label := str(name_of.call(id)) if name_of.is_valid() else ""
 	if label == "" or label == String(key):
 		label = str(tracker.session_info(key).get("name", "")) if tracker != null else ""
@@ -29,6 +39,25 @@ func actor(id: Variant) -> Dictionary:
 		label = ""
 	var bot := bool(is_bot.call(id)) if is_bot.is_valid() else false
 	return {"key": key, "name": label, "bot": bot}
+
+
+## The stats key of [param id]; [method actor] without the name and bot lookups a hit does not use.
+func _key(id: Variant) -> StringName:
+	return key_of.call(id) if key_of.is_valid() else StringName(str(id))
+
+
+func _file(key: StringName, stat: StringName, value: float, dims: Dictionary, cell: String) -> bool:
+	if batched:
+		return tracker.record_later(key, stat, value, dims, cell)
+	return tracker.record(key, stat, value, dims).ok
+
+
+func _keep(cell: String, dims: Dictionary) -> Dictionary:
+	dims.make_read_only()
+	if _dims.size() >= DIMS_KEPT:
+		_dims.clear()
+	_dims[cell] = dims
+	return dims
 
 
 ## Files one kill for the head-to-head table. Names given in [param meta] as killer_name / victim_name win; refused for world deaths and suicides.
@@ -54,21 +83,29 @@ func report_kill(killer: Variant, victim: Variant, weapon: String = "", meta: Di
 func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringName, amount: float = 0.0, killed: bool = false, side: StringName = &"") -> bool:
 	if tracker == null or shooter == null or victim == null or zone == &"":
 		return false
-	var s := actor(shooter)
-	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
+	var key := _key(shooter)
+	if key == &"" or key == _key(victim):
 		return false
 	var wname := weapon if weapon != "" else "unknown"
-	# The joint axis is what lets the site show one weapon's zones; separate cells cannot be crossed.
-	var dims := {"weapon": wname, "zone": String(zone), "weapon_zone": "%s.%s" % [wname, zone]}
-	var ok := tracker.record(s["key"], GSStatsHitzones.HITS, 1.0, dims).ok
+	var cell := "h\n" + wname + "\n" + zone
+	var dims: Variant = _dims.get(cell)
+	if dims == null:
+		# The joint axis is what lets the site show one weapon's zones; separate cells cannot be crossed.
+		dims = _keep(cell, {"weapon": wname, "zone": String(zone), "weapon_zone": "%s.%s" % [wname, zone]})
+	var ok := _file(key, GSStatsHitzones.HITS, 1.0, dims, cell)
 	if amount > 0.0:
-		ok = tracker.record(s["key"], GSStatsHitzones.DAMAGE, amount, dims).ok and ok
+		ok = _file(key, GSStatsHitzones.DAMAGE, amount, dims, cell) and ok
 	if killed:
-		ok = tracker.record(s["key"], GSStatsHitzones.KILLS, 1.0, dims).ok and ok
+		ok = _file(key, GSStatsHitzones.KILLS, 1.0, dims, cell) and ok
 	if side != &"":
-		dims["side"] = String(side)
-		dims["weapon_side"] = "%s.%s" % [wname, side]
-		ok = tracker.record(s["key"], GSStatsHitzones.SIDE_HITS, 1.0, dims).ok and ok
+		var side_cell := cell + "\n" + side
+		var side_dims: Variant = _dims.get(side_cell)
+		if side_dims == null:
+			var d: Dictionary = (dims as Dictionary).duplicate()
+			d["side"] = String(side)
+			d["weapon_side"] = "%s.%s" % [wname, side]
+			side_dims = _keep(side_cell, d)
+		ok = _file(key, GSStatsHitzones.SIDE_HITS, 1.0, side_dims, side_cell) and ok
 	return ok
 
 
@@ -76,15 +113,19 @@ func report_hit(shooter: Variant, victim: Variant, weapon: String, zone: StringN
 func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind: StringName, amount: float = 0.0, killed: bool = false) -> bool:
 	if tracker == null or shooter == null or victim == null or kind == &"":
 		return false
-	var s := actor(shooter)
-	if s["key"] == &"" or s["key"] == actor(victim)["key"]:
+	var key := _key(shooter)
+	if key == &"" or key == _key(victim):
 		return false
-	var dims := {"weapon": weapon if weapon != "" else "unknown", "kind": String(kind)}
-	var ok := tracker.record(s["key"], GSStatsPenetration.HITS, 1.0, dims).ok
+	var wname := weapon if weapon != "" else "unknown"
+	var cell := "p\n" + wname + "\n" + kind
+	var dims: Variant = _dims.get(cell)
+	if dims == null:
+		dims = _keep(cell, {"weapon": wname, "kind": String(kind)})
+	var ok := _file(key, GSStatsPenetration.HITS, 1.0, dims, cell)
 	if amount > 0.0:
-		ok = tracker.record(s["key"], GSStatsPenetration.DAMAGE, amount, dims).ok and ok
+		ok = _file(key, GSStatsPenetration.DAMAGE, amount, dims, cell) and ok
 	if killed:
-		ok = tracker.record(s["key"], GSStatsPenetration.KILLS, 1.0, dims).ok and ok
+		ok = _file(key, GSStatsPenetration.KILLS, 1.0, dims, cell) and ok
 	return ok
 
 
@@ -92,14 +133,17 @@ func report_penetration(shooter: Variant, victim: Variant, weapon: String, kind:
 func report_wall_pass(shooter: Variant, weapon: String, material: StringName, cost: float) -> bool:
 	if tracker == null or shooter == null or material == &"":
 		return false
-	var s := actor(shooter)
-	if s["key"] == &"":
+	var key := _key(shooter)
+	if key == &"":
 		return false
 	var wname := weapon if weapon != "" else "unknown"
-	var dims := {"material": String(material), "weapon_material": "%s.%s" % [wname, material]}
-	var ok := tracker.record(s["key"], GSStatsPenetration.PASSES, 1.0, dims).ok
+	var cell := "w\n" + wname + "\n" + material
+	var dims: Variant = _dims.get(cell)
+	if dims == null:
+		dims = _keep(cell, {"material": String(material), "weapon_material": "%s.%s" % [wname, material]})
+	var ok := _file(key, GSStatsPenetration.PASSES, 1.0, dims, cell)
 	if cost > 0.0:
-		ok = tracker.record(s["key"], GSStatsPenetration.COST, cost, dims).ok and ok
+		ok = _file(key, GSStatsPenetration.COST, cost, dims, cell) and ok
 	return ok
 
 
@@ -107,13 +151,17 @@ func report_wall_pass(shooter: Variant, weapon: String, material: StringName, co
 func report_shot_outcome(shooter: Variant, weapon: String, hit: bool) -> bool:
 	if tracker == null or shooter == null or not tracker.schema.has(GSStatsShots.SHOTS):
 		return false
-	var s := actor(shooter)
-	if s["key"] == &"":
+	var key := _key(shooter)
+	if key == &"":
 		return false
-	var dims := {"weapon": weapon if weapon != "" else "unknown"}
-	var ok := tracker.record(s["key"], GSStatsShots.SHOTS, 1.0, dims).ok
+	var wname := weapon if weapon != "" else "unknown"
+	var cell := "s\n" + wname
+	var dims: Variant = _dims.get(cell)
+	if dims == null:
+		dims = _keep(cell, {"weapon": wname})
+	var ok := _file(key, GSStatsShots.SHOTS, 1.0, dims, cell)
 	if hit:
-		ok = tracker.record(s["key"], GSStatsShots.HITS, 1.0, dims).ok and ok
+		ok = _file(key, GSStatsShots.HITS, 1.0, dims, cell) and ok
 	return ok
 
 

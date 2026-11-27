@@ -45,6 +45,19 @@ func record(def: GSStatsDef, reading: float, dims: Dictionary = {}) -> GSResult:
 	return GSResult.success(next)
 
 
+## Adds counter [param readings] to [param id], and each to its cells ([param cell_keys] holds a
+## PackedStringArray of "stat|axis:value" keys per reading), one at a time in the order given: the same
+## sums, to the last bit, as one [method record] per reading.
+func fold(id: StringName, readings: Array, cell_keys: Array) -> void:
+	var total := float(values.get(id, 0.0))
+	for i in readings.size():
+		var r: float = readings[i]
+		total += r
+		for key: String in cell_keys[i]:
+			cells[key] = float(cells.get(key, 0.0)) + r
+	values[id] = total
+
+
 ## Folds one breakdown cell ("stat|axis:value") in by the stat's rule. False when the reading is not finite.
 func record_cell(def: GSStatsDef, key: String, reading: float) -> bool:
 	if not is_finite(reading):
