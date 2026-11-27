@@ -2,6 +2,8 @@
 
 Per-player statistics a game declares once and reports in batches. Counters, gauges, bests and lowests are merged by a rule the game states, and filed to the TMC back end without a server ever handing over an account id.
 
+GameSpice addon under the MIT licence, built with Claude Code, with a headless suite in `examples/stats_selftest.tscn`. The games in [Zee's Games](https://zeesgames.com) run on live servers built from GameSpice addons, and they report their player statistics through this one. Bug reports go to the [issue tracker](https://github.com/gamespice-platform/stats/issues).
+
 State the merge rule once per stat (add, replace or keep the better) and every party applies it the same way: the server counting, the reporter batching and the site storing.
 
 ## Install
@@ -76,8 +78,27 @@ The file is `GSStatsSchema.to_site_defs()`. A scaled `difference` is skipped wit
 
 Import the project once, then run `examples/stats_selftest.tscn` headless with Godot. `examples/stats_sql_live.tscn` runs the SQL store against real databases through `../gs-sql/tools/test_live.sh`. More in [docs/](docs/README.md).
 
-## Status and licence
+## Used by
 
-Part of the [**GameSpice**](https://gamespice.net) platform: a family of Godot addons. Written with Claude Code and maintained by `gamemann`. Every addon has headless tests, but little of this has been played by real users yet, so expect rough edges and please [open an issue](https://github.com/gamespice-platform/stats/issues) when you hit one.
+All of these games from Zee's Games vendor this addon:
+
+- [Fatal Contact](https://zeesgames.com/fatal-contact)
+- [Airdrift](https://zeesgames.com/airdrift)
+- [Playlot](https://zeesgames.com/playlot)
+- [Hungario](https://zeesgames.com/hungario)
+- [Buses From Hell](https://zeesgames.com/buses-from-hell)
+- [Smash Copter](https://zeesgames.com/smash-copter)
+- [Zombie Zone](https://zeesgames.com/zombie-zone)
+- [Hide n Seek](https://zeesgames.com/hide-n-seek)
+- [Prop Hunt](https://zeesgames.com/prop-hunt)
+- [Murder Mystery](https://zeesgames.com/murder-mystery)
+- [Deathrun](https://zeesgames.com/deathrun)
+- [Wipeout](https://zeesgames.com/wipeout)
+- [Dangerous Delivery](https://zeesgames.com/dangerous-delivery)
+- [Look At Me](https://zeesgames.com/look-at-me)
+
+The whole collection is at [zeesgames.com](https://zeesgames.com).
+
+## Licence
 
 MIT licence, see [LICENSE](LICENSE). The only closed part of the [**GameSpice**](https://gamespice.net) platform is the web back end; you can use your own instead of GameSpice's.
